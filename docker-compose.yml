@@ -1,0 +1,43 @@
+services:
+  # ==========================================
+  # PostgreSQL
+  # ==========================================
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: agrogestion
+      POSTGRES_USER: agrogestion
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-agrogestion_secret_2024}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Puerto expuesto solo si necesitás acceder desde el host (cambiar si 5432 está ocupado)
+    # ports:
+    #   - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U agrogestion -d agrogestion" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # Agro Gestión - App
+  # ==========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://agrogestion:${DB_PASSWORD:-agrogestion_secret_2024}@db:5432/agrogestion?schema=public
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-cambiar-esto-en-produccion}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NODE_ENV: production
+    ports:
+      - "${APP_PORT:-3000}:3000"
+
+volumes:
+  postgres_data:

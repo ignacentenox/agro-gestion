@@ -1,26 +1,229 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-inter);
+    /* Brand purple */
+    --color-purple-50: #faf5ff;
+    --color-purple-100: #f3e8ff;
+    --color-purple-200: #e9d5ff;
+    --color-purple-300: #d8b4fe;
+    --color-purple-400: #c084fc;
+    --color-purple-500: #a855f7;
+    --color-purple-600: #8B3A9F;
+    --color-purple-700: #7B2D8E;
+    --color-purple-800: #6B2280;
+    --color-purple-900: #581C6B;
+    /* Brand green */
+    --color-green-50: #f0fdf4;
+    --color-green-100: #dcfce7;
+    --color-green-200: #bbf7d0;
+    --color-green-300: #86efac;
+    --color-green-400: #A5D63F;
+    --color-green-500: #8DC63F;
+    --color-green-600: #6BA030;
+    --color-green-700: #4F7A22;
+    --color-green-800: #3A5C1A;
+    --color-green-900: #2A4214;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #f9fafb;
+  color: #111827;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.dark body,
+html.dark body {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+/* ===== Dark Mode Global Overrides ===== */
+
+/* Tables */
+.dark table {
+  border-color: #374151;
+}
+
+.dark thead {
+  background-color: #1e293b;
+}
+
+.dark th {
+  color: #d1d5db;
+  border-color: #374151;
+}
+
+.dark td {
+  color: #e2e8f0;
+  border-color: #374151;
+}
+
+.dark tbody tr:hover {
+  background-color: #1e293b;
+}
+.dark tbody tr {
+  border-color: #374151;
+}
+
+/* Common text overrides for pages */
+.dark .text-gray-900 {
+  color: #f1f5f9;
+}
+
+.dark .text-gray-800 {
+  color: #e2e8f0;
+}
+
+.dark .text-gray-700 {
+  color: #cbd5e1;
+}
+
+.dark .text-gray-600 {
+  color: #94a3b8;
+}
+
+.dark .text-gray-500 {
+  color: #94a3b8;
+}
+
+/* Background overrides */
+.dark .bg-white {
+  background-color: #1e293b;
+}
+
+.dark .bg-gray-50 {
+  background-color: #0f172a;
+}
+
+.dark .bg-gray-100 {
+  background-color: #1e293b;
+}
+
+/* Border overrides */
+.dark .border-gray-200 {
+  border-color: #374151;
+}
+
+.dark .border-gray-300 {
+  border-color: #4b5563;
+}
+
+/* Hover states */
+.dark .hover\:bg-gray-50:hover {
+  background-color: #1e293b;
+}
+
+.dark .hover\:bg-gray-100:hover {
+  background-color: #334155;
+}
+
+/* Brand color adjustments for dark */
+.dark .text-green-700 {
+  color: #A5D63F;
+}
+
+.dark .text-green-800 {
+  color: #8DC63F;
+}
+
+.dark .bg-green-50 {
+  background-color: rgba(165, 214, 63, 0.1);
+}
+
+.dark .bg-green-100 {
+  background-color: rgba(165, 214, 63, 0.15);
+}
+
+.dark .text-purple-700 {
+  color: #c084fc;
+}
+
+.dark .text-purple-800 {
+  color: #d8b4fe;
+}
+
+.dark .bg-purple-50 {
+  background-color: rgba(139, 58, 159, 0.1);
+}
+
+.dark .bg-red-50 {
+  background-color: rgba(220, 38, 38, 0.1);
+}
+
+.dark .bg-blue-50 {
+  background-color: rgba(37, 99, 235, 0.1);
+}
+
+.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+.dark .bg-orange-50 {
+  background-color: rgba(234, 88, 12, 0.1);
+}
+
+.dark .bg-yellow-50 {
+  background-color: rgba(234, 179, 8, 0.1);
+}
+
+/* Form elements in dark */
+.dark select,
+.dark textarea {
+  background-color: #1e293b;
+  border-color: #4b5563;
+  color: #e2e8f0;
+}
+
+/* Badges/pills */
+.dark .bg-green-100 {
+  background-color: rgba(165, 214, 63, 0.15);
+}
+
+.dark .text-green-600 {
+  color: #A5D63F;
+}
+
+.dark .bg-red-100 {
+  background-color: rgba(220, 38, 38, 0.15);
+}
+
+.dark .text-red-600 {
+  color: #f87171;
+}
+
+.dark .bg-yellow-100 {
+  background-color: rgba(234, 179, 8, 0.15);
+}
+
+.dark .text-yellow-600 {
+  color: #facc15;
+}
+
+.dark .bg-blue-100 {
+  background-color: rgba(37, 99, 235, 0.15);
+}
+
+.dark .text-blue-600 {
+  color: #60a5fa;
+}
+
+/* Scrollbar */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
