@@ -49,6 +49,10 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+# Instalar netcat para el wait-for-db
+USER root
+RUN apk add --no-cache netcat-openbsd
+USER nextjs
 CMD ["./start.sh"]
 
 # Copiar el script de inicio

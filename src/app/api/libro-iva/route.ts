@@ -36,7 +36,7 @@ export async function GET(request: Request) {
 		]);
 
 	// IVA Ventas (Débito Fiscal)
-	const ventasFacturas = facturasEmitidas.map((f) => ({
+	const ventasFacturas = facturasEmitidas.map((f: any) => ({
 		id: f.id,
 		tipo: "Factura" as const,
 		tipoComprobante: f.tipoComprobante,
