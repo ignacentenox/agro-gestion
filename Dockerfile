@@ -22,7 +22,6 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-RUN npx prisma generate
 RUN npm run build
 
 # ==========================================
@@ -50,4 +49,9 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+CMD ["./start.sh"]
+
+# Copiar el script de inicio
+COPY start.sh ./start.sh
+RUN chmod +x ./start.sh
 CMD ["node", "server.js"]

@@ -23,6 +23,20 @@ async function main() {
 	});
 	console.log(`✅ Usuario admin creado: ${admin.email}`);
 
+	// Usuario admin adicional solicitado
+	const hashedPassword2 = await bcrypt.hash("4455", 12);
+	const admin2 = await prisma.user.upsert({
+		where: { email: "igna@agrogestion.com" },
+		update: {},
+		create: {
+			email: "igna@agrogestion.com",
+			name: "Ignacio Admin",
+			password: hashedPassword2,
+			role: "ADMIN",
+		},
+	});
+	console.log(`✅ Usuario admin creado: ${admin2.email}`);
+
 	// ==========================================
 	// Bancos de ejemplo
 	// ==========================================
