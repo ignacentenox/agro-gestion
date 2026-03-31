@@ -1,64 +1,35 @@
+
 # ==========================================
-# Stage 1: Dependencias
+# Build & Production en una sola etapa
 # ==========================================
-FROM node:20-alpine AS deps
+FROM node:20-alpine AS app
 WORKDIR /app
-
-COPY package.json package-lock.json* ./
-RUN npm ci --only=production && npm cache clean --force
-COPY prisma ./prisma/
-RUN npx prisma generate
-
-# ==========================================
-# Stage 2: Build
-# ==========================================
-FROM node:20-alpine AS builder
-WORKDIR /app
-
-COPY package.json package-lock.json* ./
-RUN npm ci
-COPY . .
-
-ENV NEXT_TELEMETRY_DISABLED=1
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
-# Generar el cliente de Prisma con la configuración final
+
+# Instalar dependencias y copiar código
+COPY package.json package-lock.json* ./
+RUN npm ci && npm cache clean --force
+COPY . .
+
+# Generar cliente Prisma y build
 RUN npx prisma generate
 RUN npm run build
 
-# ==========================================
-# Stage 3: Production
-# ==========================================
-FROM node:20-alpine AS runner
-WORKDIR /app
+# Crear usuario seguro para correr la app
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-
+# Instalar netcat para el wait-for-db
+USER root
+RUN apk add --no-cache netcat-openbsd
 USER nextjs
 
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Instalar netcat para el wait-for-db
-USER root
-RUN apk add --no-cache netcat-openbsd
-USER nextjs
-CMD ["./start.sh"]
-
 # Copiar el script de inicio
 COPY start.sh ./start.sh
-RUN chmod +x ./start.sh
-CMD ["node", "server.js"]
+CMD ["./start.sh"]
