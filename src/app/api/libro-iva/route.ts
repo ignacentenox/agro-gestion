@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 		total: Number(f.total),
 	}));
 
-	const ventasLiquidaciones = liquidacionesEmitidas.map((l) => ({
+	const ventasLiquidaciones = liquidacionesEmitidas.map((l: any) => ({
 		id: l.id,
 		tipo: "Liquidación" as const,
 		tipoComprobante: null,
@@ -71,7 +71,7 @@ export async function GET(request: Request) {
 	}));
 
 	// IVA Compras (Crédito Fiscal)
-	const comprasFacturas = facturasRecibidas.map((f) => ({
+	const comprasFacturas = facturasRecibidas.map((f: any) => ({
 		id: f.id,
 		tipo: "Factura" as const,
 		tipoComprobante: f.tipoComprobante,
@@ -88,7 +88,7 @@ export async function GET(request: Request) {
 		total: Number(f.total),
 	}));
 
-	const comprasLiquidaciones = liquidacionesRecibidas.map((l) => ({
+	const comprasLiquidaciones = liquidacionesRecibidas.map((l: any) => ({
 		id: l.id,
 		tipo: "Liquidación" as const,
 		tipoComprobante: null,
