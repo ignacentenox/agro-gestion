@@ -1,6 +1,16 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+	throw new Error("DATABASE_URL no esta definido");
+}
+
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 // Datos extraídos del USB /Volumes/POROTO/Users/ALVAROMORES/Documents
 // Fuente: PDFs de FACTURAS + Excels de CUENTAS CORRIENTES y SOY AGRO LAND
@@ -121,4 +131,7 @@ main()
 		console.error("❌ Error en importación:", e);
 		process.exit(1);
 	})
-	.finally(() => prisma.$disconnect());
+	.finally(async () => {
+		await prisma.$disconnect();
+		await pool.end();
+	});

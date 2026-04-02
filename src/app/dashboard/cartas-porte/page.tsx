@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Truck, Pencil, Trash2, X, Search } from "lucide-react";
+import { Plus, Truck, Pencil, Trash2, X, Search, FileUp } from "lucide-react";
 
 const CULTIVOS = [
 	{ value: "SOJA", label: "Soja" },
@@ -93,6 +93,8 @@ export default function CartasPortePage() {
 	const [filtroEstado, setFiltroEstado] = useState("TODOS");
 	const [filtroProducto, setFiltroProducto] = useState("TODOS");
 	const [busqueda, setBusqueda] = useState("");
+	const [importingPdf, setImportingPdf] = useState(false);
+	const fileInputRef = useRef<HTMLInputElement | null>(null);
 
 	useEffect(() => {
 		loadCartas();
@@ -164,6 +166,49 @@ export default function CartasPortePage() {
 		if (res.ok) loadCartas();
 	}
 
+	async function handleImportPdf(file: File) {
+		setImportingPdf(true);
+		try {
+			const data = new FormData();
+			data.append("file", file);
+
+			const res = await fetch("/api/cartas-porte/parse-pdf", {
+				method: "POST",
+				body: data,
+			});
+
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				throw new Error(json?.error || "No se pudo procesar el PDF");
+			}
+
+			const parsed = json?.parsed || {};
+			setForm((prev) => ({
+				...prev,
+				fecha: parsed.fecha || prev.fecha,
+				destino: parsed.destino || prev.destino,
+				localidadDestino: parsed.localidadDestino || prev.localidadDestino,
+				localidadOrigen: parsed.localidadOrigen || prev.localidadOrigen,
+				producto: parsed.producto || prev.producto,
+				pesoBrutoKg: parsed.pesoBrutoKg != null ? String(parsed.pesoBrutoKg) : prev.pesoBrutoKg,
+				pesoTaraKg: parsed.pesoTaraKg != null ? String(parsed.pesoTaraKg) : prev.pesoTaraKg,
+				transportista: parsed.transportista || prev.transportista,
+				chofer: parsed.chofer || prev.chofer,
+				patenteCamion: parsed.patenteCamion || prev.patenteCamion,
+				patenteAcoplado: parsed.patenteAcoplado || prev.patenteAcoplado,
+				ctg: parsed.ctg || prev.ctg,
+			}));
+
+			setEditingId(null);
+			setOpen(true);
+		} catch (error: unknown) {
+			const msg = error instanceof Error ? error.message : "Error desconocido";
+			alert(`No se pudo importar el PDF: ${msg}`);
+		} finally {
+			setImportingPdf(false);
+		}
+	}
+
 	const pesoNeto = (Number(form.pesoBrutoKg) || 0) - (Number(form.pesoTaraKg) || 0);
 
 	const cartasFiltradas = cartas.filter((c) => {
@@ -197,9 +242,28 @@ export default function CartasPortePage() {
 					<h1 className="text-3xl font-bold text-gray-900 dark:text-white">Cartas de Porte</h1>
 					<p className="text-gray-500 mt-1">Control de transporte de granos</p>
 				</div>
-				<Button onClick={() => { setForm(emptyForm); setEditingId(null); setOpen(true); }}>
-					<Plus className="mr-2 h-4 w-4" /> Nueva Carta de Porte
-				</Button>
+				<div className="flex items-center gap-2">
+					<input
+						ref={fileInputRef}
+						type="file"
+						accept="application/pdf,.pdf"
+						className="hidden"
+						onChange={(e) => {
+							const file = e.target.files?.[0];
+							if (file) {
+								void handleImportPdf(file);
+							}
+							e.currentTarget.value = "";
+						}}
+					/>
+					<Button variant="outline" disabled={importingPdf} onClick={() => fileInputRef.current?.click()}>
+						<FileUp className="mr-2 h-4 w-4" />
+						{importingPdf ? "Importando PDF..." : "Importar PDF"}
+					</Button>
+					<Button onClick={() => { setForm(emptyForm); setEditingId(null); setOpen(true); }}>
+						<Plus className="mr-2 h-4 w-4" /> Nueva Carta de Porte
+					</Button>
+				</div>
 			</div>
 
 			<Card className="mb-6">

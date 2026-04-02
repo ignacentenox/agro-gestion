@@ -46,6 +46,7 @@ model Proveedor {
   facturasRecibidas  FacturaRecibida[]
   liquidacionesRecibidas LiquidacionRecibida[]
   chequesEmitidos    ChequeEmitido[]
+  chequesRecibidosDestino ChequeRecibido[] @relation("ProveedorDestinoChequeRecibido")
   cuentaCorriente    CuentaCorriente[]
 
   @@map("proveedores")
@@ -211,7 +212,8 @@ model Banco {
   updatedAt       DateTime @updatedAt
 
   chequesEmitidos  ChequeEmitido[]
-  chequesRecibidos ChequeRecibido[]
+  chequesRecibidos ChequeRecibido[] @relation("BancoOrigenChequeRecibido")
+  chequesRecibidosDestino ChequeRecibido[] @relation("BancoDestinoChequeRecibido")
   movimientos      MovimientoBanco[]
 
   @@map("bancos")
@@ -230,6 +232,7 @@ model ChequeEmitido {
   bancoId         String
   banco           Banco         @relation(fields: [bancoId], references: [id])
   numeroCheque    String
+  formato         FormatoCheque  @default(FISICO)
   fecha           DateTime
   fechaCobro      DateTime
   proveedorId     String
@@ -250,8 +253,9 @@ model ChequeEmitido {
 model ChequeRecibido {
   id              String        @id @default(cuid())
   bancoOrigenId   String?
-  bancoOrigen     Banco?        @relation(fields: [bancoOrigenId], references: [id])
+  bancoOrigen     Banco?        @relation("BancoOrigenChequeRecibido", fields: [bancoOrigenId], references: [id])
   numeroCheque    String
+  formato         FormatoCheque  @default(FISICO)
   bancoEmisor     String
   fecha           DateTime
   fechaCobro      DateTime
@@ -260,7 +264,12 @@ model ChequeRecibido {
   concepto        String?
   monto           Decimal       @db.Decimal(12, 2)
   estado          EstadoCheque  @default(PENDIENTE)
-  destino         String?
+  destinoTipo     DestinoChequeRecibido?
+  bancoDestinoId  String?
+  bancoDestino    Banco?        @relation("BancoDestinoChequeRecibido", fields: [bancoDestinoId], references: [id])
+  proveedorDestinoId String?
+  proveedorDestino Proveedor?   @relation("ProveedorDestinoChequeRecibido", fields: [proveedorDestinoId], references: [id])
+  destinoDetalle  String?
   observaciones   String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -275,6 +284,18 @@ enum EstadoCheque {
   RECHAZADO
   ANULADO
   ENDOSADO
+}
+
+enum FormatoCheque {
+  FISICO
+  E_CHECK
+}
+
+enum DestinoChequeRecibido {
+  DEPOSITO
+  VENTA
+  PROVEEDOR
+  CARTERA
 }
 
 // ==========================================

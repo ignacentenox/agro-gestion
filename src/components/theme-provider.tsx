@@ -11,7 +11,7 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-	theme: "system",
+	theme: "dark",
 	resolvedTheme: "light",
 	setTheme: () => { },
 });
@@ -28,12 +28,12 @@ function getSystemTheme(): "light" | "dark" {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-	const [theme, setThemeState] = useState<Theme>("system");
+	const [theme, setThemeState] = useState<Theme>("dark");
 	const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
 
 	useEffect(() => {
 		const stored = localStorage.getItem("agro-theme") as Theme | null;
-		if (stored) {
+		if (stored === "light" || stored === "dark") {
 			setThemeState(stored);
 		}
 	}, []);
@@ -46,18 +46,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 		root.classList.remove("light", "dark");
 		root.classList.add(resolved);
 
-		// Listen for system changes when in "system" mode
-		if (theme === "system") {
-			const media = window.matchMedia("(prefers-color-scheme: dark)");
-			const handler = (e: MediaQueryListEvent) => {
-				const newTheme = e.matches ? "dark" : "light";
-				setResolvedTheme(newTheme);
-				root.classList.remove("light", "dark");
-				root.classList.add(newTheme);
-			};
-			media.addEventListener("change", handler);
-			return () => media.removeEventListener("change", handler);
-		}
+		return;
 	}, [theme]);
 
 	function setTheme(t: Theme) {

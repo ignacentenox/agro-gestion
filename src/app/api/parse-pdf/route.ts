@@ -1,6 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PDFParse } from "pdf-parse";
 import * as XLSX from "xlsx";
+import { extractPdfTextFromBuffer } from "@/lib/pdf-text";
+
+function parseAmountLocaleAR(value: string | null | undefined): number | null {
+	if (!value) return null;
+
+	let raw = value
+		.replace(/\$/g, "")
+		.replace(/\s+/g, "")
+		.replace(/[^\d.,-]/g, "");
+
+	if (!raw) return null;
+
+	const hasComma = raw.includes(",");
+	const dotCount = (raw.match(/\./g) || []).length;
+
+	if (hasComma) {
+		// Formato AR típico: 57.460.000,00
+		raw = raw.replace(/\./g, "").replace(",", ".");
+	} else if (dotCount > 1) {
+		// Formato con miles por punto sin decimales explícitos.
+		raw = raw.replace(/\./g, "");
+	} else if (dotCount === 1) {
+		const [entero = "", decimal = ""] = raw.split(".");
+		if (decimal.length === 3) {
+			// 57.460 -> miles, no decimales.
+			raw = `${entero}${decimal}`;
+		}
+	}
+
+	raw = raw.replace(/[^\d.-]/g, "");
+	if (!raw || raw === "-" || raw === ".") return null;
+
+	const num = Number(raw);
+	return Number.isFinite(num) ? num : null;
+}
 
 // Parsear texto extraído de facturas AFIP argentinas
 function parseInvoiceText(text: string) {
@@ -126,22 +160,20 @@ function parseInvoiceText(text: string) {
 		for (const line of lines) {
 			const match = line.match(pattern);
 			if (match) {
-				const raw = match[1].replace(/\./g, "").replace(",", ".").trim();
-				const num = parseFloat(raw);
-				return isNaN(num) ? null : num;
+				return parseAmountLocaleAR(match[1]);
 			}
 		}
 		return null;
 	}
 
-	result.netoGravado = parseAmountFromLines(/(?:Importe\s+)?Neto\s+Gravado\s*:?\s*\$?\s*([\d.,]+)/i);
-	result.netoNoGravado = parseAmountFromLines(/(?:Importe\s+)?(?:No\s+Gravado|Neto\s+No\s+Gravado)\s*:?\s*\$?\s*([\d.,]+)/i) ?? 0;
-	result.netoExento = parseAmountFromLines(/(?:Importe\s+)?Exento\s*:?\s*\$?\s*([\d.,]+)/i) ?? 0;
+	result.netoGravado = parseAmountFromLines(/(?:Importe\s+)?Neto\s+Gravado\s*:?\s*\$?\s*([\d.,\s]+)/i);
+	result.netoNoGravado = parseAmountFromLines(/(?:Importe\s+)?(?:No\s+Gravado|Neto\s+No\s+Gravado)\s*:?\s*\$?\s*([\d.,\s]+)/i) ?? 0;
+	result.netoExento = parseAmountFromLines(/(?:Importe\s+)?Exento\s*:?\s*\$?\s*([\d.,\s]+)/i) ?? 0;
 
 	// IVA por alícuota
-	const iva21 = parseAmountFromLines(/IVA\s+21\s*%?\s*:?\s*\$?\s*([\d.,]+)/i);
-	const iva105 = parseAmountFromLines(/IVA\s+10[.,]5\s*%?\s*:?\s*\$?\s*([\d.,]+)/i);
-	const iva27 = parseAmountFromLines(/IVA\s+27\s*%?\s*:?\s*\$?\s*([\d.,]+)/i);
+	const iva21 = parseAmountFromLines(/IVA\s+21\s*%?\s*:?\s*\$?\s*([\d.,\s]+)/i);
+	const iva105 = parseAmountFromLines(/IVA\s+10[.,]5\s*%?\s*:?\s*\$?\s*([\d.,\s]+)/i);
+	const iva27 = parseAmountFromLines(/IVA\s+27\s*%?\s*:?\s*\$?\s*([\d.,\s]+)/i);
 
 	if (iva21 && iva21 > 0) {
 		result.alicuotaIva = 21;
@@ -155,20 +187,54 @@ function parseInvoiceText(text: string) {
 	}
 
 	// Percepciones
-	result.percepcionIva = parseAmountFromLines(/(?:Per\.?\/?Ret\.?\s+(?:de\s+)?IVA|Percepci[oó]n\s+IVA)\s*:?\s*\$?\s*([\d.,]+)/i) ?? 0;
-	result.percepcionIIBB = parseAmountFromLines(/(?:Per\.?\/?Ret\.?\s+(?:de\s+)?Ingresos\s+Brutos|Percepci[oó]n\s+IIBB)\s*:?\s*\$?\s*([\d.,]+)/i) ?? 0;
-	result.otrosImpuestos = parseAmountFromLines(/(?:Otros\s+Tributos|Impuestos\s+Internos)\s*:?\s*\$?\s*([\d.,]+)/i) ?? 0;
+	result.percepcionIva = parseAmountFromLines(/(?:Per\.?\/?Ret\.?\s+(?:de\s+)?IVA|Percepci[oó]n\s+IVA)\s*:?\s*\$?\s*([\d.,\s]+)/i) ?? 0;
+	result.percepcionIIBB = parseAmountFromLines(/(?:Per\.?\/?Ret\.?\s+(?:de\s+)?Ingresos\s+Brutos|Percepci[oó]n\s+IIBB)\s*:?\s*\$?\s*([\d.,\s]+)/i) ?? 0;
+	result.otrosImpuestos = parseAmountFromLines(/(?:Otros\s+Tributos|Impuestos\s+Internos)\s*:?\s*\$?\s*([\d.,\s]+)/i) ?? 0;
 
 	// Total
-	result.total = parseAmountFromLines(/Importe\s+Total\s*:?\s*\$?\s*([\d.,]+)/i);
+	result.total = parseAmountFromLines(/Importe\s+Total\s*:?\s*\$?\s*([\d.,\s]+)/i);
 
-	// Descripción (línea de detalle de producto)
-	for (const line of lines) {
-		if (line.match(/^\w.+\d+[.,]\d{2}\s+\w+\s+[\d.,]+/)) {
-			const desc = line.split(/\s{2,}/)[0].trim();
-			if (desc.length > 3 && !/^(Código|IVA|Per\.|Descripción)/i.test(desc)) {
-				result.descripcion = desc.substring(0, 200);
-				break;
+	// Fallback por consistencia contable si el PDF no trae total claro.
+	if (result.total == null) {
+		const computedTotal =
+			Number(result.netoGravado || 0) +
+			Number(result.netoNoGravado || 0) +
+			Number(result.netoExento || 0) +
+			Number(result.montoIva || 0) +
+			Number(result.percepcionIva || 0) +
+			Number(result.percepcionIIBB || 0) +
+			Number(result.otrosImpuestos || 0);
+
+		if (computedTotal > 0) {
+			result.total = computedTotal;
+		}
+	}
+
+	// Descripción: priorizar texto del bloque "Producto / Servicio".
+	const descFromProductoServicio =
+		t.match(/Subtotal\s+c\/?IVA\s+(.+?)\s+\d{1,3}(?:[.,]\d+)?\s+unidades\b/i)?.[1]
+		|| t.match(/Producto\s*\/\s*Servicio\s+(.+?)\s+\d{1,3}(?:[.,]\d+)?\s+unidades\b/i)?.[1]
+		|| null;
+
+	if (descFromProductoServicio) {
+		const cleaned = descFromProductoServicio
+			.replace(/\s+/g, " ")
+			.replace(/^(C[oó]digo\s+Producto\s*\/\s*Servicio\s*)/i, "")
+			.trim();
+
+		if (cleaned.length > 3) {
+			result.descripcion = cleaned.substring(0, 220);
+		}
+	}
+
+	if (!result.descripcion) {
+		for (const line of lines) {
+			if (line.match(/^\w.+\d+[.,]\d{2}\s+\w+\s+[\d.,]+/)) {
+				const desc = line.split(/\s{2,}/)[0].trim();
+				if (desc.length > 3 && !/^(C[oó]digo|IVA|Per\.|Descripci[oó]n|Fecha)/i.test(desc)) {
+					result.descripcion = desc.substring(0, 220);
+					break;
+				}
 			}
 		}
 	}
@@ -200,16 +266,16 @@ function parseExcelInvoice(buffer: Buffer): Record<string, string | number | nul
 				if (nextCell) result.razonSocial = nextCell;
 			}
 			if (cellLower.includes("neto gravado") || cellLower === "neto") {
-				const val = parseFloat(String(nextCell).replace(/[$.\s]/g, "").replace(",", "."));
-				if (!isNaN(val)) result.netoGravado = val;
+				const val = parseAmountLocaleAR(nextCell);
+				if (val != null) result.netoGravado = val;
 			}
 			if (cellLower === "total" || cellLower.includes("importe total")) {
-				const val = parseFloat(String(nextCell).replace(/[$.\s]/g, "").replace(",", "."));
-				if (!isNaN(val)) result.total = val;
+				const val = parseAmountLocaleAR(nextCell);
+				if (val != null) result.total = val;
 			}
 			if (cellLower.includes("iva") && nextCell.match(/[\d.,]+/)) {
-				const val = parseFloat(String(nextCell).replace(/[$.\s]/g, "").replace(",", "."));
-				if (!isNaN(val) && val > 0) result.montoIva = val;
+				const val = parseAmountLocaleAR(nextCell);
+				if (val != null && val > 0) result.montoIva = val;
 			}
 		}
 	}
@@ -265,9 +331,7 @@ export async function POST(request: NextRequest) {
 		let rawText = "";
 
 		if (isPdf) {
-			const parser = new PDFParse({ data: buffer });
-			const textResult = await parser.getText();
-			rawText = textResult.text;
+			rawText = await extractPdfTextFromBuffer(buffer);
 			parsed = parseInvoiceText(rawText);
 		} else {
 			parsed = parseExcelInvoice(buffer);

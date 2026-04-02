@@ -91,16 +91,23 @@ export default function FacturasEmitidasPage() {
 	const [loading, setLoading] = useState(false);
 	const [mes, setMes] = useState(String(new Date().getMonth() + 1));
 	const [anio, setAnio] = useState(String(new Date().getFullYear()));
+	const [filtroActivo, setFiltroActivo] = useState(false);
 	const [comprobante, setComprobante] = useState<Factura | null>(null);
 	const printRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		loadFacturas();
 		loadClientes();
-	}, [mes, anio]);
+	}, []);
 
-	async function loadFacturas() {
-		const res = await fetch(`/api/facturas-emitidas?mes=${mes}&anio=${anio}`);
+	async function loadFacturas(opts?: { mes?: string; anio?: string }) {
+		const params = new URLSearchParams();
+		if (opts?.mes && opts?.anio) {
+			params.set("mes", opts.mes);
+			params.set("anio", opts.anio);
+		}
+		const query = params.toString();
+		const res = await fetch(`/api/facturas-emitidas${query ? `?${query}` : ""}`);
 		const data = await res.json();
 		setFacturas(data);
 	}
@@ -146,12 +153,7 @@ export default function FacturasEmitidasPage() {
 		});
 
 		if (res.ok) {
-			// Ajustar filtro al mes/año de la factura guardada para que aparezca
-			const [y, m] = form.fecha.split("-");
-			if (y && m) {
-				setAnio(y);
-				setMes(String(parseInt(m)));
-			}
+			setFiltroActivo(false);
 			setOpen(false);
 			setForm(emptyForm);
 			loadFacturas();
@@ -165,6 +167,20 @@ export default function FacturasEmitidasPage() {
 	async function handleDelete(id: string) {
 		if (!confirm("¿Eliminar esta factura?")) return;
 		await fetch(`/api/facturas-emitidas/${id}`, { method: "DELETE" });
+		if (filtroActivo) {
+			loadFacturas({ mes, anio });
+		} else {
+			loadFacturas();
+		}
+	}
+
+	function aplicarFiltro() {
+		setFiltroActivo(true);
+		loadFacturas({ mes, anio });
+	}
+
+	function limpiarFiltro() {
+		setFiltroActivo(false);
 		loadFacturas();
 	}
 
@@ -239,6 +255,10 @@ export default function FacturasEmitidasPage() {
 								onChange={(e) => setAnio(e.target.value)}
 								className="w-24"
 							/>
+						</div>
+						<div className="flex gap-2">
+							<Button type="button" variant="outline" onClick={aplicarFiltro}>Aplicar filtro</Button>
+							<Button type="button" variant="ghost" onClick={limpiarFiltro}>Ver todas</Button>
 						</div>
 						<div className="ml-auto flex gap-4 text-sm">
 							<div className="text-right">
