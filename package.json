@@ -1,7 +1,18 @@
 {
 	"name": "agro-gestion",
 	"version": "1.0.0",
+	"description": "Sistema de gestion contable y administrativa para empresas agropecuarias.",
 	"private": true,
+	"author": "IGNACE",
+	"license": "UNLICENSED",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ignacentenox/agro-gestion.git"
+	},
+	"homepage": "https://github.com/ignacentenox/agro-gestion",
+	"bugs": {
+		"url": "https://github.com/ignacentenox/agro-gestion/issues"
+	},
 	"scripts": {
 		"dev": "next dev",
 		"build": "next build",

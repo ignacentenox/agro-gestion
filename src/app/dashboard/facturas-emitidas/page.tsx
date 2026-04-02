@@ -89,6 +89,7 @@ export default function FacturasEmitidasPage() {
 	const [open, setOpen] = useState(false);
 	const [form, setForm] = useState(emptyForm);
 	const [loading, setLoading] = useState(false);
+	const [autoCreatingClient, setAutoCreatingClient] = useState(false);
 	const [mes, setMes] = useState(String(new Date().getMonth() + 1));
 	const [anio, setAnio] = useState(String(new Date().getFullYear()));
 	const [comprobante, setComprobante] = useState<Factura | null>(null);
@@ -168,8 +169,64 @@ export default function FacturasEmitidasPage() {
 		loadFacturas();
 	}
 
+	function normalizeCondicionIva(raw?: string): string {
+		const value = (raw || "").toUpperCase();
+		if (value.includes("RESPONSABLE")) return "RESPONSABLE_INSCRIPTO";
+		if (value.includes("MONOTRIBUT")) return "MONOTRIBUTISTA";
+		if (value.includes("EXENTO")) return "EXENTO";
+		if (value.includes("CONSUMIDOR")) return "CONSUMIDOR_FINAL";
+		return "NO_CATEGORIZADO";
+	}
+
+	function cleanCuit(cuit?: string): string {
+		return (cuit || "").replace(/\D/g, "");
+	}
+
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	function handlePdfParsed(data: any) {
+	async function ensureClienteFromParsed(data: any): Promise<string | null> {
+		const cuit = cleanCuit(data.cuitReceptor || data.cuitEmisor);
+		if (cuit.length !== 11) return null;
+
+		const existing = clientes.find((c) => c.cuit === cuit);
+		if (existing) return existing.id;
+
+		setAutoCreatingClient(true);
+		try {
+			const body = {
+				razonSocial: data.razonSocial || data.nombreEmisor || `Cliente ${cuit}`,
+				cuit,
+				condicionIva: normalizeCondicionIva(data.condicionIva),
+				observaciones: "Alta automática por importación de comprobante",
+			};
+
+			const res = await fetch("/api/clientes", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+
+			if (res.status === 201) {
+				const created = await res.json();
+				setClientes((prev) => [...prev, created].sort((a, b) => a.razonSocial.localeCompare(b.razonSocial)));
+				return created.id;
+			}
+
+			if (res.status === 409) {
+				await loadClientes();
+				const refreshedRes = await fetch("/api/clientes");
+				const refreshed = await refreshedRes.json();
+				const match = refreshed.find((c: Cliente) => c.cuit === cuit);
+				return match?.id || null;
+			}
+		} finally {
+			setAutoCreatingClient(false);
+		}
+
+		return null;
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async function handlePdfParsed(data: any) {
 		setForm((prev) => ({
 			...prev,
 			...(data.tipoComprobante && { tipoComprobante: data.tipoComprobante }),
@@ -183,10 +240,10 @@ export default function FacturasEmitidasPage() {
 			...(data.percepcionIIBB && { percepcionIIBB: String(data.percepcionIIBB) }),
 			...(data.otrosImpuestos && { otrosImpuestos: String(data.otrosImpuestos) }),
 		}));
-		if (data.cuitReceptor || data.cuitEmisor) {
-			const cuit = data.cuitReceptor || data.cuitEmisor;
-			const match = clientes.find((c) => c.cuit === cuit);
-			if (match) setForm((prev) => ({ ...prev, clienteId: match.id }));
+
+		const clienteId = await ensureClienteFromParsed(data);
+		if (clienteId) {
+			setForm((prev) => ({ ...prev, clienteId }));
 		}
 	}
 
@@ -320,6 +377,11 @@ export default function FacturasEmitidasPage() {
 			<Dialog open={open} onOpenChange={setOpen}>
 				<DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
 					<DialogHeader><DialogTitle>Nueva Factura Emitida</DialogTitle></DialogHeader>
+					{autoCreatingClient && (
+						<div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+							Detectado cliente nuevo en el comprobante. Creando ficha automáticamente...
+						</div>
+					)}
 					<PdfUpload onParsed={handlePdfParsed} />
 					<form onSubmit={handleSubmit} className="space-y-4">
 						<div className="grid grid-cols-2 gap-4">
