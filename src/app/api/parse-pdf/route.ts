@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PDFParse } from "pdf-parse";
 import * as XLSX from "xlsx";
+import PDFParser from "pdf2json";
+import { PDFImage } from "pdf-image";
+import { createWorker } from "tesseract.js";
+import fs from "fs";
+import os from "os";
+import path, { join } from "path";
 
 // Parsear texto extraído de facturas AFIP argentinas
 function parseInvoiceText(text: string) {
@@ -223,6 +228,89 @@ function parseExcelInvoice(buffer: Buffer): Record<string, string | number | nul
 	return result;
 }
 
+async function extractTextWithOCR(buffer: Buffer): Promise<string> {
+	// Guardar PDF temporalmente
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfocr-"));
+	const pdfPath = path.join(tmpDir, "file.pdf");
+	fs.writeFileSync(pdfPath, buffer);
+
+	// Obtener número de páginas usando pdf2json
+	const pdfParser = new PDFParser();
+	const numPages: number = await new Promise((resolve, reject) => {
+		pdfParser.on("pdfParser_dataError", errData => {
+			const errorMsg = (errData && typeof errData === 'object' && 'parserError' in errData)
+				? (errData as any).parserError?.message || (errData as any).parserError || 'Error al parsear PDF'
+				: 'Error al parsear PDF';
+			reject(errorMsg);
+		});
+		pdfParser.on("pdfParser_dataReady", pdfData => {
+			const pages = Array.isArray(pdfData?.Pages) ? pdfData.Pages.length : 1;
+			resolve(pages);
+		});
+		pdfParser.parseBuffer(buffer);
+	});
+
+	const pdfImage = new PDFImage(pdfPath, { outputDirectory: tmpDir, convertPath: 'magick' });
+	let fullText = "";
+	let worker: any | null = null;
+
+	try {
+		// Configuración del worker de tesseract.js para Node.js
+		// @ts-expect-error workerPath no está en los tipos pero sí es soportado en runtime
+		worker = await createWorker({
+			workerPath: require.resolve("tesseract.js/dist/node/worker.js")
+		});
+
+		await worker.load();
+		await worker.loadLanguage("spa");
+		await worker.initialize("spa");
+
+		for (let i = 0; i < numPages; i++) {
+			const imagePath = await pdfImage.convertPage(i);
+			const { data: { text } } = await worker.recognize(imagePath);
+			fullText += text + "\n";
+			fs.unlinkSync(imagePath);
+		}
+
+		return fullText;
+	} catch (err: unknown) {
+		const message = err instanceof Error ? err.message : String(err);
+		throw new Error(`Error durante el procesamiento OCR: ${message}`);
+	} finally {
+		if (worker) {
+			try {
+				await worker.terminate();
+			} catch {
+				// Ignorar errores al terminar el worker para no ocultar el error principal
+			}
+		}
+
+		try {
+			if (fs.existsSync(pdfPath)) {
+				fs.unlinkSync(pdfPath);
+			}
+		} catch {
+			// Ignorar errores de limpieza de archivo
+		}
+
+		try {
+			if (fs.existsSync(tmpDir)) {
+				fs.rmdirSync(tmpDir, { recursive: true });
+			}
+		} catch {
+			// Ignorar errores de limpieza de directorio
+		}
+	}
+}
+
+function detectTipoDocumento(text: string): string {
+	const t = text.toLowerCase();
+	if (t.includes("e-check") || t.includes("cheque electrónico")) return "e-check";
+	if (t.includes("carta de porte")) return "carta de porte";
+	if (t.includes("factura") || t.includes("recibo") || t.includes("nota de crédito") || t.includes("nota de débito")) return "comprobante";
+	return "desconocido";
+}
+
 const VALID_TYPES = [
 	"application/pdf",
 	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -232,59 +320,122 @@ const VALID_TYPES = [
 export async function POST(request: NextRequest) {
 	try {
 		const formData = await request.formData();
-		const file = formData.get("file") as File | null;
+		const files = formData.getAll("file").filter(f => f instanceof File) as File[];
 
-		if (!file) {
+		if (!files.length) {
 			return NextResponse.json(
-				{ error: "Debe enviar un archivo" },
+				{ error: "Debe enviar al menos un archivo" },
 				{ status: 400 }
 			);
 		}
 
-		const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-		const isExcel = VALID_TYPES.includes(file.type) ||
-			file.name.toLowerCase().endsWith(".xlsx") ||
-			file.name.toLowerCase().endsWith(".xls");
+		const results: Record<string, any[]> = {
+			comprobantes: [],
+			echecks: [],
+			cartasDePorte: [],
+			desconocidos: []
+		};
 
-		if (!isPdf && !isExcel) {
-			return NextResponse.json(
-				{ error: "Solo se permiten archivos PDF o Excel (.xlsx/.xls)" },
-				{ status: 400 }
-			);
+		for (const file of files) {
+			const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+			const isExcel = [
+				"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+				"application/vnd.ms-excel",
+			].includes(file.type) ||
+				file.name.toLowerCase().endsWith(".xlsx") ||
+				file.name.toLowerCase().endsWith(".xls");
+
+			let parsed: Record<string, string | number | null> = {};
+			let rawText = "";
+			let tipo = "desconocido";
+			let error: string | null = null;
+			let errorStack: string | null = null;
+
+			try {
+				const buffer = Buffer.from(await file.arrayBuffer());
+				if (isPdf) {
+					// 1. Intentar extraer texto con pdf2json
+					const pdfParser = new PDFParser();
+					try {
+						rawText = await new Promise<string>((resolve, reject) => {
+							pdfParser.on("pdfParser_dataError", errData => {
+								const errorMsg = (errData && typeof errData === 'object' && 'parserError' in errData)
+									? (errData as any).parserError?.message || (errData as any).parserError || 'Error al parsear PDF'
+									: 'Error al parsear PDF';
+								console.error(`[PDF2JSON][${file.name}] Error:`, errorMsg, errData);
+								reject(errorMsg);
+							});
+							pdfParser.on("pdfParser_dataReady", pdfData => {
+								const text = pdfParser.getRawTextContent();
+								resolve(text);
+							});
+							pdfParser.parseBuffer(buffer);
+						});
+						parsed = parseInvoiceText(rawText);
+						if (!rawText.trim() || Object.values(parsed).filter(Boolean).length === 0) {
+							// 2. Si no se extrajo texto útil, aplicar OCR
+							console.log(`[OCR][${file.name}] Intentando extraer texto con OCR...`);
+							rawText = await extractTextWithOCR(buffer);
+							parsed = parseInvoiceText(rawText);
+						}
+					} catch (e: any) {
+						console.error(`[PDF2JSON][${file.name}] Falla, se intenta OCR.`, e);
+						// Si pdf2json falla, intentar OCR
+						try {
+							rawText = await extractTextWithOCR(buffer);
+							parsed = parseInvoiceText(rawText);
+						} catch (ocrErr: any) {
+							console.error(`[OCR][${file.name}] Error:`, ocrErr);
+							error = ocrErr?.message || "Error desconocido en OCR";
+							errorStack = ocrErr?.stack || JSON.stringify(ocrErr);
+						}
+					}
+					tipo = detectTipoDocumento(rawText);
+				} else if (isExcel) {
+					try {
+						parsed = parseExcelInvoice(buffer);
+						rawText = "[Archivo Excel procesado]";
+						tipo = "comprobante";
+					} catch (excelErr: any) {
+						console.error(`[EXCEL][${file.name}] Error:`, excelErr);
+						error = excelErr?.message || "Error procesando Excel";
+						errorStack = excelErr?.stack || JSON.stringify(excelErr);
+					}
+				} else if (file.name.toLowerCase().endsWith(".xml")) {
+					// TODO: parsear XML de e-check
+					tipo = "e-check";
+					parsed = { xml: "pendiente" };
+				} else {
+					error = "Tipo de archivo no soportado";
+				}
+			} catch (e: any) {
+				console.error(`[GENERAL][${file.name}] Error:`, e);
+				error = e?.message || "Error desconocido";
+				errorStack = e?.stack || JSON.stringify(e);
+			}
+
+			const result = {
+				fileName: file.name,
+				type: tipo,
+				parsed,
+				rawText: rawText.substring(0, 2000),
+				error,
+				errorStack
+			};
+			if (tipo === "comprobante") results.comprobantes.push(result);
+			else if (tipo === "e-check") results.echecks.push(result);
+			else if (tipo === "carta de porte") results.cartasDePorte.push(result);
+			else results.desconocidos.push(result);
 		}
 
-		if (file.size > 10 * 1024 * 1024) {
-			return NextResponse.json(
-				{ error: "El archivo no puede superar 10MB" },
-				{ status: 400 }
-			);
-		}
-
-		const buffer = Buffer.from(await file.arrayBuffer());
-		let parsed: Record<string, string | number | null>;
-		let rawText = "";
-
-		if (isPdf) {
-			const parser = new PDFParse({ data: buffer });
-			const textResult = await parser.getText();
-			rawText = textResult.text;
-			parsed = parseInvoiceText(rawText);
-		} else {
-			parsed = parseExcelInvoice(buffer);
-			rawText = "[Archivo Excel procesado]";
-		}
-
-		return NextResponse.json({
-			success: true,
-			rawText: rawText.substring(0, 2000),
-			parsed,
-		});
+		return NextResponse.json({ success: true, ...results });
 	} catch (error: unknown) {
 		const msg = error instanceof Error ? error.message : "Error desconocido";
-		console.error("Error parsing file:", msg);
+		console.error("[FATAL][parse-pdf] Error parsing files:", error);
 		return NextResponse.json(
-			{ error: `Error al procesar el archivo: ${msg}` },
+			{ error: `Error al procesar los archivos: ${msg}` },
 			{ status: 500 }
 		);
 	}
 }
+
