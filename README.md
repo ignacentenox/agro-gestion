@@ -2,6 +2,10 @@
 
 Sistema de gestión contable y administrativa para empresas agropecuarias. Controla facturas, liquidaciones, IVA, cheques, bancos y cuentas corrientes.
 
+## Descripción
+
+Agro Gestión es una aplicación web full stack orientada al circuito administrativo y contable agropecuario. Permite operar comprobantes, libro IVA, cheques, cuentas corrientes y cartas de porte desde un único panel con autenticación y trazabilidad por usuario.
+
 ## Módulos
 
 | Módulo | Descripción |
@@ -24,12 +28,12 @@ Sistema de gestión contable y administrativa para empresas agropecuarias. Contr
 - **ORM**: Prisma 7
 - **UI**: Tailwind CSS + Radix UI
 - **Auth**: JWT (jose) con cookies HttpOnly
-- **Deploy**: Docker + Docker Compose
+- **Deploy**: Vercel (automático con GitHub Actions)
 
 ## Requisitos
 
 - Node.js 20+
-- PostgreSQL 16+ (o Docker)
+- PostgreSQL 16+
 - npm
 
 ## Instalación Local (Desarrollo)
@@ -58,64 +62,71 @@ Acceder a `http://localhost:3000`
 
 **Login inicial:** `admin@agrogestion.com` / `admin123`
 
-## Deploy en VPS con Docker
+## Deploy Automático (GitHub + Vercel)
 
-### 1. Preparar el servidor
+El repositorio ya incluye automatización en:
 
-```bash
-# Instalar Docker en Ubuntu/Debian
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
+- `.github/workflows/ci.yml`: ejecuta build en cada push y pull request.
+- `.github/workflows/vercel-deploy.yml`: publica preview en cada pull request y producción en cada push a `main`.
 
-# Instalar Docker Compose plugin
-sudo apt install docker-compose-plugin
-```
+### Configuración única (5 minutos)
 
-### 2. Configurar la aplicación
-
-```bash
-# Clonar el repositorio
-git clone <repo-url>
-cd agro-gestion
-
-# Configurar variables de producción
-cp .env.production .env
-
-# IMPORTANTE: Editar .env con valores seguros
-# - DB_PASSWORD: contraseña fuerte para PostgreSQL
-# - NEXTAUTH_SECRET: generar con openssl rand -base64 32
-# - NEXTAUTH_URL: URL real del servidor
-```
-
-### 3. Levantar los servicios
+1. Crear proyecto en Vercel e importar este repositorio.
+2. En GitHub, abrir `Settings > Secrets and variables > Actions` y crear:
+	- `VERCEL_TOKEN`
+	- `VERCEL_ORG_ID`
+	- `VERCEL_PROJECT_ID`
+	- Alternativa automática por terminal (recomendado):
 
 ```bash
-# Build y arranque
-docker compose up -d --build
-
-# Ejecutar migraciones
-docker compose exec app npx prisma migrate deploy
-
-# Seed inicial
-docker compose exec app npx prisma db seed
-
-# Ver logs
-docker compose logs -f app
+export VERCEL_TOKEN="tu_token"
+export VERCEL_ORG_ID="tu_org_id"
+export VERCEL_PROJECT_ID="tu_project_id"
+./scripts/setup-vercel-github-secrets.sh
 ```
 
-### 4. Configurar VPN (WireGuard recomendado)
+3. En Vercel, definir las variables de entorno necesarias del proyecto (por ejemplo `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`).
+4. Hacer push a una rama para generar un preview automático.
+5. Hacer merge a `main` para desplegar producción automáticamente.
 
-Para acceso seguro desde fuera de la red local:
+### Resultado
+
+- Cada PR queda publicado con URL de preview.
+- Cada push a `main` actualiza producción sin pasos manuales.
+
+## Releases
+
+Estrategia recomendada de versiones:
+
+- `main`: rama estable de producción.
+- `release/x.y.z`: rama opcional para preparar una versión.
+- tags semánticos: `v1.0.0`, `v1.1.0`, `v1.1.1`.
+- cada tag debe publicarse en GitHub Releases con changelog.
+
+Plantilla de release:
+
+1. Novedades
+2. Fixes
+3. Cambios de base de datos/migraciones
+4. Notas de compatibilidad
+
+## Package
+
+Metadata esperada del paquete (ver `package.json`):
+
+- `name`: `agro-gestion`
+- `version`: versión semántica del release
+- `description`: resumen funcional del sistema
+- `author`: `IGNACE`
+- `license`: `UNLICENSED` (propietario)
+
+Comandos principales:
 
 ```bash
-# Instalar WireGuard
-sudo apt install wireguard
-
-# Generar claves
-wg genkey | tee /etc/wireguard/private.key | wg pubkey > /etc/wireguard/public.key
+npm run dev
+npm run build
+npm run start
 ```
-
-Configurar `/etc/wireguard/wg0.conf` con las IPs de la VPN y los peers. La app solo escuchará en la IP de la VPN configurando `APP_PORT` y firewall.
 
 ## Estructura del Proyecto
 
@@ -136,8 +147,6 @@ agro-gestion/
 │       ├── auth.ts        # Autenticación JWT
 │       ├── prisma.ts      # Cliente Prisma singleton
 │       └── utils.ts       # Utilidades
-├── docker-compose.yml
-├── Dockerfile
 └── .env.production        # Template de variables
 ```
 
@@ -148,7 +157,6 @@ agro-gestion/
 | `DATABASE_URL` | URL de conexión a PostgreSQL | `postgresql://user:pass@host:5432/db` |
 | `NEXTAUTH_SECRET` | Clave secreta para JWT | Generar con `openssl rand -base64 32` |
 | `NEXTAUTH_URL` | URL base de la aplicación | `https://agro.empresa.com` |
-| `DB_PASSWORD` | Contraseña de PostgreSQL (Docker) | Contraseña segura |
 | `APP_PORT` | Puerto de la aplicación | `3000` |
 
 ## Comandos Útiles
@@ -163,14 +171,8 @@ npx prisma migrate dev           # Crear migración
 npx prisma migrate deploy        # Aplicar migraciones en prod
 npx prisma db seed               # Ejecutar seed
 npx prisma generate              # Regenerar cliente
-
-# Docker
-docker compose up -d --build     # Build y arranque
-docker compose down              # Parar servicios
-docker compose logs -f           # Ver logs
-docker compose exec app sh       # Shell en el container
 ```
 
 ## Licencia
 
-Privado - Todos los derechos reservados.
+Software propietario. Todos los derechos reservados por IGNACE.

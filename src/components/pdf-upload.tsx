@@ -26,7 +26,7 @@ interface ParsedInvoice {
 }
 
 interface PdfUploadProps {
-	onParsed: (data: ParsedInvoice) => void;
+	onParsed: (data: ParsedInvoice) => void | Promise<void>;
 }
 
 type Status = "idle" | "uploading" | "success" | "error";
@@ -96,7 +96,7 @@ export function PdfUpload({ onParsed }: PdfUploadProps) {
 
 			setStatus("success");
 			setMessage(`${fieldsFound} campos detectados de "${file.name}"`);
-			onParsed(parsed);
+			await onParsed(parsed);
 		} catch {
 			setStatus("error");
 			setMessage("Error de conexión al procesar el archivo");
