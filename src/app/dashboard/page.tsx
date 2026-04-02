@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency, getMonthName } from "@/lib/utils";
+import { formatCurrency, formatDate, getMonthName } from "@/lib/utils";
 import {
 	FileText,
 	FileInput,
