@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* Removed unsupported @custom-variant dark rule */
 
-@theme inline {
+:root {
   --font-sans: var(--font-inter);
     /* Brand purple */
     --color-purple-50: #faf5ff;
@@ -226,4 +226,7 @@ html.dark body {
 
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #64748b;
+}
+.bg-\[color\:var\(--my-color\)\] {
+  background-color: var(--my-color);
 }

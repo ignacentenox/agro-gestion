@@ -255,11 +255,7 @@ async function extractTextWithOCR(buffer: Buffer): Promise<string> {
 	let worker: any | null = null;
 
 	try {
-		// Configuración del worker de tesseract.js para Node.js
-		// @ts-expect-error workerPath no está en los tipos pero sí es soportado en runtime
-		worker = await createWorker({
-			workerPath: require.resolve("tesseract.js/dist/node/worker.js")
-		});
+		worker = await createWorker();
 
 		await worker.load();
 		await worker.loadLanguage("spa");

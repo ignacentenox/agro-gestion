@@ -195,6 +195,15 @@ export default function FacturasEmitidasPage() {
 		window.open(`/comprobante/${comprobante.id}`, "_blank");
 	}
 
+	// TEST MANUAL: Ejecutar handlePdfParsed con datos simulados desde la consola
+	if (typeof window !== "undefined") {
+		window.handlePdfParsedTest = () => handlePdfParsed({
+			netoGravado: 1000,
+			fecha: "2024-01-01",
+			tipoComprobante: "FACTURA_A"
+		});
+	}
+
 	const calc = calculateTotals();
 	const totalMes = facturas.reduce((sum, f) => sum + Number(f.total), 0);
 	const totalIvaMes = facturas.reduce((sum, f) => sum + Number(f.montoIva), 0);
