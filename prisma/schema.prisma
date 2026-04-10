@@ -68,6 +68,7 @@ model Cliente {
   facturasEmitidas    FacturaEmitida[]
   liquidacionesEmitidas LiquidacionEmitida[]
   chequesRecibidos    ChequeRecibido[]
+  cuentaCorriente     CuentaCorrienteCliente[]
 
   @@map("clientes")
 }
@@ -343,6 +344,36 @@ model CuentaCorriente {
 enum TipoMovimientoCC {
   FACTURA
   PAGO
+  NOTA_CREDITO
+  NOTA_DEBITO
+  AJUSTE
+}
+
+// ==========================================
+// CUENTAS CORRIENTES (CLIENTES)
+// ==========================================
+model CuentaCorrienteCliente {
+  id            String   @id @default(cuid())
+  clienteId     String
+  cliente       Cliente  @relation(fields: [clienteId], references: [id])
+  fecha         DateTime
+  concepto      String
+  tipo          TipoMovimientoCCC
+  debe          Decimal  @default(0) @db.Decimal(12, 2)
+  haber         Decimal  @default(0) @db.Decimal(12, 2)
+  saldo         Decimal  @db.Decimal(12, 2)
+  referencia    String?
+  observaciones String?
+  createdAt     DateTime @default(now())
+
+  @@map("cuentas_corrientes_clientes")
+}
+
+enum TipoMovimientoCCC {
+  FACTURA
+  COBRO_CHEQUE
+  COBRO_TRANSFERENCIA
+  COBRO_EFECTIVO
   NOTA_CREDITO
   NOTA_DEBITO
   AJUSTE
