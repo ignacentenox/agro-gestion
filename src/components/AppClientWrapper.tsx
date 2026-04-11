@@ -1,10 +1,10 @@
 "use client";
-import WelcomeSplash from "@/components/WelcomeSplash";
+import WelcomeToast from "@/components/WelcomeToast";
 
 export default function AppClientWrapper({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <WelcomeSplash />
+      <WelcomeToast />
       {children}
     </>
   );

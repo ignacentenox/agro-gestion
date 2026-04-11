@@ -20,6 +20,12 @@ import { formatCurrency, formatDate, formatCuit } from "@/lib/utils";
 import { Plus, FileText, Printer } from "lucide-react";
 import { PdfUpload } from "@/components/pdf-upload";
 
+declare global {
+	interface Window {
+		handlePdfParsedTest?: () => void;
+	}
+}
+
 const TIPOS_COMPROBANTE = [
 	{ value: "FACTURA_A", label: "Factura A" },
 	{ value: "FACTURA_B", label: "Factura B" },
@@ -266,6 +272,15 @@ export default function FacturasEmitidasPage() {
 	function handlePrint() {
 		if (!comprobante) return;
 		window.open(`/comprobante/${comprobante.id}`, "_blank");
+	}
+
+	// TEST MANUAL: Ejecutar handlePdfParsed con datos simulados desde la consola
+	if (typeof window !== "undefined") {
+		window.handlePdfParsedTest = () => handlePdfParsed({
+			netoGravado: 1000,
+			fecha: "2024-01-01",
+			tipoComprobante: "FACTURA_A"
+		});
 	}
 
 	const calc = calculateTotals();
