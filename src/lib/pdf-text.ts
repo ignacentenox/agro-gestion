@@ -1,27 +1,36 @@
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
+import PDFParser from "pdf2json";
 
-GlobalWorkerOptions.workerSrc = "";
+function safeDecodePdfText(value: string): string {
+	try {
+		return decodeURIComponent(value);
+	} catch {
+		return value;
+	}
+}
 
 export async function extractPdfTextFromBuffer(buffer: Buffer): Promise<string> {
-	const loadingTask = getDocument({
-		data: new Uint8Array(buffer),
-		disableWorker: true,
-		useWorkerFetch: false,
-		isEvalSupported: false,
+	return new Promise((resolve, reject) => {
+		const parser = new PDFParser();
+
+		parser.on("pdfParser_dataError", (errData: unknown) => {
+			const msg = typeof errData === "object" && errData !== null
+				&& "parserError" in errData
+				? String((errData as { parserError?: unknown }).parserError)
+				: "Error parseando PDF";
+			reject(new Error(msg));
+		});
+
+		parser.on("pdfParser_dataReady", (pdfData: unknown) => {
+			const pages = (pdfData as { Pages?: Array<{ Texts?: Array<{ R?: Array<{ T?: string }> }> }> })?.Pages || [];
+			const text = pages
+				.map((page) => (page.Texts || [])
+					.map((t) => safeDecodePdfText(t.R?.[0]?.T || ""))
+					.join(" "))
+				.join("\n")
+				.trim();
+			resolve(text);
+		});
+
+		parser.parseBuffer(buffer);
 	});
-
-	const pdf = await loadingTask.promise;
-	const pages: string[] = [];
-
-	for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
-		const page = await pdf.getPage(pageNum);
-		const textContent = await page.getTextContent();
-		const pageText = textContent.items
-			.map((item) => ("str" in item ? item.str : ""))
-			.filter(Boolean)
-			.join(" ");
-		pages.push(pageText);
-	}
-
-	return pages.join("\n");
 }

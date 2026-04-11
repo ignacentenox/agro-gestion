@@ -256,11 +256,7 @@ export default function CartasPortePage() {
 							e.currentTarget.value = "";
 						}}
 					/>
-					<Button
-						variant="outline"
-						disabled={importingPdf}
-						onClick={() => fileInputRef.current?.click()}
-					>
+					<Button variant="outline" disabled={importingPdf} onClick={() => fileInputRef.current?.click()}>
 						<FileUp className="mr-2 h-4 w-4" />
 						{importingPdf ? "Importando PDF..." : "Importar PDF"}
 					</Button>

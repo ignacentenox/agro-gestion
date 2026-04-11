@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate, formatCuit, getMonthName } from "@/lib/utils";
 import { BookOpen } from "lucide-react";
@@ -48,12 +49,27 @@ export default function LibroIvaPage() {
 	const [data, setData] = useState<LibroIvaData | null>(null);
 	const [mes, setMes] = useState(String(new Date().getMonth() + 1));
 	const [anio, setAnio] = useState(String(new Date().getFullYear()));
+	const [filtroActivo, setFiltroActivo] = useState(false);
 
 	useEffect(() => {
+		fetch("/api/libro-iva")
+			.then((r) => r.json())
+			.then(setData);
+	}, []);
+
+	function aplicarFiltro() {
+		setFiltroActivo(true);
 		fetch(`/api/libro-iva?mes=${mes}&anio=${anio}`)
 			.then((r) => r.json())
 			.then(setData);
-	}, [mes, anio]);
+	}
+
+	function verTodas() {
+		setFiltroActivo(false);
+		fetch("/api/libro-iva")
+			.then((r) => r.json())
+			.then(setData);
+	}
 
 	if (!data) return <div className="p-8 text-gray-400">Cargando...</div>;
 
@@ -65,7 +81,8 @@ export default function LibroIvaPage() {
 			<div className="mb-6">
 				<h1 className="text-3xl font-bold text-gray-900">Libro IVA</h1>
 				<p className="text-gray-500 mt-1">
-					Control mensual de IVA Compras y Ventas — {getMonthName(Number(mes))} {anio}
+					Control de IVA Compras y Ventas
+					{filtroActivo ? ` - ${getMonthName(Number(mes))} ${anio}` : " - Todas"}
 				</p>
 			</div>
 
@@ -87,6 +104,10 @@ export default function LibroIvaPage() {
 				<div>
 					<Label>Año</Label>
 					<Input type="number" value={anio} onChange={(e) => setAnio(e.target.value)} className="w-24" />
+				</div>
+				<div className="flex gap-2">
+					<Button type="button" variant="outline" onClick={aplicarFiltro}>Aplicar filtro</Button>
+					<Button type="button" variant="ghost" onClick={verTodas}>Ver todas</Button>
 				</div>
 			</div>
 

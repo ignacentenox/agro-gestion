@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { formatCuit } from "@/lib/utils";
-import { Plus, Search, Users, Pencil } from "lucide-react";
+import { Plus, Search, Users, Pencil, Trash2 } from "lucide-react";
 
 const CONDICIONES_IVA = [
 	{ value: "RESPONSABLE_INSCRIPTO", label: "Responsable Inscripto" },
@@ -146,7 +146,15 @@ export default function ClientesPage() {
 								<TableCell>
 									<div className="flex gap-1">
 										<Button variant="ghost" size="icon" onClick={() => handleEdit(c)}><Pencil className="h-4 w-4" /></Button>
-										<Button variant="ghost" size="sm" onClick={() => handleDelete(c.id)}>Desactivar</Button>
+										<Button
+											variant="ghost"
+											size="icon"
+											onClick={() => handleDelete(c.id)}
+											title="Eliminar cliente"
+											aria-label="Eliminar cliente"
+										>
+											<Trash2 className="h-4 w-4 text-red-600" />
+										</Button>
 									</div>
 								</TableCell>
 							</TableRow>

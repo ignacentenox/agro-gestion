@@ -1,11 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import PDFParser from "pdf2json";
-import { PDFImage } from "pdf-image";
-import { createWorker } from "tesseract.js";
-import fs from "fs";
-import os from "os";
-import path, { join } from "path";
+import { extractPdfTextFromBuffer } from "@/lib/pdf-text";
+
+function parseAmountLocaleAR(value: string | null | undefined): number | null {
+	if (!value) return null;
+
+	let raw = value
+		.replace(/\$/g, "")
+		.replace(/\s+/g, "")
+		.replace(/[^\d.,-]/g, "");
+
+	if (!raw) return null;
+
+	const hasComma = raw.includes(",");
+	const dotCount = (raw.match(/\./g) || []).length;
+
+	if (hasComma) {
+		// Formato AR típico: 57.460.000,00
+		raw = raw.replace(/\./g, "").replace(",", ".");
+	} else if (dotCount > 1) {
+		// Formato con miles por punto sin decimales explícitos.
+		raw = raw.replace(/\./g, "");
+	} else if (dotCount === 1) {
+		const [entero = "", decimal = ""] = raw.split(".");
+		if (decimal.length === 3) {
+			// 57.460 -> miles, no decimales.
+			raw = `${entero}${decimal}`;
+		}
+	}
+
+	raw = raw.replace(/[^\d.-]/g, "");
+	if (!raw || raw === "-" || raw === ".") return null;
+
+	const num = Number(raw);
+	return Number.isFinite(num) ? num : null;
+}
 
 // Parsear texto extraído de facturas AFIP argentinas
 function parseInvoiceText(text: string) {
@@ -131,22 +160,20 @@ function parseInvoiceText(text: string) {
 		for (const line of lines) {
 			const match = line.match(pattern);
 			if (match) {
-				const raw = match[1].replace(/\./g, "").replace(",", ".").trim();
-				const num = parseFloat(raw);
-				return isNaN(num) ? null : num;
+				return parseAmountLocaleAR(match[1]);
 			}
 		}
 		return null;
 	}
 
-	result.netoGravado = parseAmountFromLines(/(?:Importe\s+)?Neto\s+Gravado\s*:?\s*\$?\s*([\d.,]+)/i);
-	result.netoNoGravado = parseAmountFromLines(/(?:Importe\s+)?(?:No\s+Gravado|Neto\s+No\s+Gravado)\s*:?\s*\$?\s*([\d.,]+)/i) ?? 0;
-	result.netoExento = parseAmountFromLines(/(?:Importe\s+)?Exento\s*:?\s*\$?\s*([\d.,]+)/i) ?? 0;
+	result.netoGravado = parseAmountFromLines(/(?:Importe\s+)?Neto\s+Gravado\s*:?\s*\$?\s*([\d.,\s]+)/i);
+	result.netoNoGravado = parseAmountFromLines(/(?:Importe\s+)?(?:No\s+Gravado|Neto\s+No\s+Gravado)\s*:?\s*\$?\s*([\d.,\s]+)/i) ?? 0;
+	result.netoExento = parseAmountFromLines(/(?:Importe\s+)?Exento\s*:?\s*\$?\s*([\d.,\s]+)/i) ?? 0;
 
 	// IVA por alícuota
-	const iva21 = parseAmountFromLines(/IVA\s+21\s*%?\s*:?\s*\$?\s*([\d.,]+)/i);
-	const iva105 = parseAmountFromLines(/IVA\s+10[.,]5\s*%?\s*:?\s*\$?\s*([\d.,]+)/i);
-	const iva27 = parseAmountFromLines(/IVA\s+27\s*%?\s*:?\s*\$?\s*([\d.,]+)/i);
+	const iva21 = parseAmountFromLines(/IVA\s+21\s*%?\s*:?\s*\$?\s*([\d.,\s]+)/i);
+	const iva105 = parseAmountFromLines(/IVA\s+10[.,]5\s*%?\s*:?\s*\$?\s*([\d.,\s]+)/i);
+	const iva27 = parseAmountFromLines(/IVA\s+27\s*%?\s*:?\s*\$?\s*([\d.,\s]+)/i);
 
 	if (iva21 && iva21 > 0) {
 		result.alicuotaIva = 21;
@@ -160,20 +187,54 @@ function parseInvoiceText(text: string) {
 	}
 
 	// Percepciones
-	result.percepcionIva = parseAmountFromLines(/(?:Per\.?\/?Ret\.?\s+(?:de\s+)?IVA|Percepci[oó]n\s+IVA)\s*:?\s*\$?\s*([\d.,]+)/i) ?? 0;
-	result.percepcionIIBB = parseAmountFromLines(/(?:Per\.?\/?Ret\.?\s+(?:de\s+)?Ingresos\s+Brutos|Percepci[oó]n\s+IIBB)\s*:?\s*\$?\s*([\d.,]+)/i) ?? 0;
-	result.otrosImpuestos = parseAmountFromLines(/(?:Otros\s+Tributos|Impuestos\s+Internos)\s*:?\s*\$?\s*([\d.,]+)/i) ?? 0;
+	result.percepcionIva = parseAmountFromLines(/(?:Per\.?\/?Ret\.?\s+(?:de\s+)?IVA|Percepci[oó]n\s+IVA)\s*:?\s*\$?\s*([\d.,\s]+)/i) ?? 0;
+	result.percepcionIIBB = parseAmountFromLines(/(?:Per\.?\/?Ret\.?\s+(?:de\s+)?Ingresos\s+Brutos|Percepci[oó]n\s+IIBB)\s*:?\s*\$?\s*([\d.,\s]+)/i) ?? 0;
+	result.otrosImpuestos = parseAmountFromLines(/(?:Otros\s+Tributos|Impuestos\s+Internos)\s*:?\s*\$?\s*([\d.,\s]+)/i) ?? 0;
 
 	// Total
-	result.total = parseAmountFromLines(/Importe\s+Total\s*:?\s*\$?\s*([\d.,]+)/i);
+	result.total = parseAmountFromLines(/Importe\s+Total\s*:?\s*\$?\s*([\d.,\s]+)/i);
 
-	// Descripción (línea de detalle de producto)
-	for (const line of lines) {
-		if (line.match(/^\w.+\d+[.,]\d{2}\s+\w+\s+[\d.,]+/)) {
-			const desc = line.split(/\s{2,}/)[0].trim();
-			if (desc.length > 3 && !/^(Código|IVA|Per\.|Descripción)/i.test(desc)) {
-				result.descripcion = desc.substring(0, 200);
-				break;
+	// Fallback por consistencia contable si el PDF no trae total claro.
+	if (result.total == null) {
+		const computedTotal =
+			Number(result.netoGravado || 0) +
+			Number(result.netoNoGravado || 0) +
+			Number(result.netoExento || 0) +
+			Number(result.montoIva || 0) +
+			Number(result.percepcionIva || 0) +
+			Number(result.percepcionIIBB || 0) +
+			Number(result.otrosImpuestos || 0);
+
+		if (computedTotal > 0) {
+			result.total = computedTotal;
+		}
+	}
+
+	// Descripción: priorizar texto del bloque "Producto / Servicio".
+	const descFromProductoServicio =
+		t.match(/Subtotal\s+c\/?IVA\s+(.+?)\s+\d{1,3}(?:[.,]\d+)?\s+unidades\b/i)?.[1]
+		|| t.match(/Producto\s*\/\s*Servicio\s+(.+?)\s+\d{1,3}(?:[.,]\d+)?\s+unidades\b/i)?.[1]
+		|| null;
+
+	if (descFromProductoServicio) {
+		const cleaned = descFromProductoServicio
+			.replace(/\s+/g, " ")
+			.replace(/^(C[oó]digo\s+Producto\s*\/\s*Servicio\s*)/i, "")
+			.trim();
+
+		if (cleaned.length > 3) {
+			result.descripcion = cleaned.substring(0, 220);
+		}
+	}
+
+	if (!result.descripcion) {
+		for (const line of lines) {
+			if (line.match(/^\w.+\d+[.,]\d{2}\s+\w+\s+[\d.,]+/)) {
+				const desc = line.split(/\s{2,}/)[0].trim();
+				if (desc.length > 3 && !/^(C[oó]digo|IVA|Per\.|Descripci[oó]n|Fecha)/i.test(desc)) {
+					result.descripcion = desc.substring(0, 220);
+					break;
+				}
 			}
 		}
 	}
@@ -205,16 +266,16 @@ function parseExcelInvoice(buffer: Buffer): Record<string, string | number | nul
 				if (nextCell) result.razonSocial = nextCell;
 			}
 			if (cellLower.includes("neto gravado") || cellLower === "neto") {
-				const val = parseFloat(String(nextCell).replace(/[$.\s]/g, "").replace(",", "."));
-				if (!isNaN(val)) result.netoGravado = val;
+				const val = parseAmountLocaleAR(nextCell);
+				if (val != null) result.netoGravado = val;
 			}
 			if (cellLower === "total" || cellLower.includes("importe total")) {
-				const val = parseFloat(String(nextCell).replace(/[$.\s]/g, "").replace(",", "."));
-				if (!isNaN(val)) result.total = val;
+				const val = parseAmountLocaleAR(nextCell);
+				if (val != null) result.total = val;
 			}
 			if (cellLower.includes("iva") && nextCell.match(/[\d.,]+/)) {
-				const val = parseFloat(String(nextCell).replace(/[$.\s]/g, "").replace(",", "."));
-				if (!isNaN(val) && val > 0) result.montoIva = val;
+				const val = parseAmountLocaleAR(nextCell);
+				if (val != null && val > 0) result.montoIva = val;
 			}
 		}
 	}
@@ -228,85 +289,6 @@ function parseExcelInvoice(buffer: Buffer): Record<string, string | number | nul
 	return result;
 }
 
-async function extractTextWithOCR(buffer: Buffer): Promise<string> {
-	// Guardar PDF temporalmente
-	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfocr-"));
-	const pdfPath = path.join(tmpDir, "file.pdf");
-	fs.writeFileSync(pdfPath, buffer);
-
-	// Obtener número de páginas usando pdf2json
-	const pdfParser = new PDFParser();
-	const numPages: number = await new Promise((resolve, reject) => {
-		pdfParser.on("pdfParser_dataError", errData => {
-			const errorMsg = (errData && typeof errData === 'object' && 'parserError' in errData)
-				? (errData as any).parserError?.message || (errData as any).parserError || 'Error al parsear PDF'
-				: 'Error al parsear PDF';
-			reject(errorMsg);
-		});
-		pdfParser.on("pdfParser_dataReady", pdfData => {
-			const pages = Array.isArray(pdfData?.Pages) ? pdfData.Pages.length : 1;
-			resolve(pages);
-		});
-		pdfParser.parseBuffer(buffer);
-	});
-
-	const pdfImage = new PDFImage(pdfPath, { outputDirectory: tmpDir, convertPath: 'magick' });
-	let fullText = "";
-	let worker: any | null = null;
-
-	try {
-		worker = await createWorker();
-
-		await worker.load();
-		await worker.loadLanguage("spa");
-		await worker.initialize("spa");
-
-		for (let i = 0; i < numPages; i++) {
-			const imagePath = await pdfImage.convertPage(i);
-			const { data: { text } } = await worker.recognize(imagePath);
-			fullText += text + "\n";
-			fs.unlinkSync(imagePath);
-		}
-
-		return fullText;
-	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : String(err);
-		throw new Error(`Error durante el procesamiento OCR: ${message}`);
-	} finally {
-		if (worker) {
-			try {
-				await worker.terminate();
-			} catch {
-				// Ignorar errores al terminar el worker para no ocultar el error principal
-			}
-		}
-
-		try {
-			if (fs.existsSync(pdfPath)) {
-				fs.unlinkSync(pdfPath);
-			}
-		} catch {
-			// Ignorar errores de limpieza de archivo
-		}
-
-		try {
-			if (fs.existsSync(tmpDir)) {
-				fs.rmdirSync(tmpDir, { recursive: true });
-			}
-		} catch {
-			// Ignorar errores de limpieza de directorio
-		}
-	}
-}
-
-function detectTipoDocumento(text: string): string {
-	const t = text.toLowerCase();
-	if (t.includes("e-check") || t.includes("cheque electrónico")) return "e-check";
-	if (t.includes("carta de porte")) return "carta de porte";
-	if (t.includes("factura") || t.includes("recibo") || t.includes("nota de crédito") || t.includes("nota de débito")) return "comprobante";
-	return "desconocido";
-}
-
 const VALID_TYPES = [
 	"application/pdf",
 	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -316,122 +298,57 @@ const VALID_TYPES = [
 export async function POST(request: NextRequest) {
 	try {
 		const formData = await request.formData();
-		const files = formData.getAll("file").filter(f => f instanceof File) as File[];
+		const file = formData.get("file") as File | null;
 
-		if (!files.length) {
+		if (!file) {
 			return NextResponse.json(
-				{ error: "Debe enviar al menos un archivo" },
+				{ error: "Debe enviar un archivo" },
 				{ status: 400 }
 			);
 		}
 
-		const results: Record<string, any[]> = {
-			comprobantes: [],
-			echecks: [],
-			cartasDePorte: [],
-			desconocidos: []
-		};
+		const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+		const isExcel = VALID_TYPES.includes(file.type) ||
+			file.name.toLowerCase().endsWith(".xlsx") ||
+			file.name.toLowerCase().endsWith(".xls");
 
-		for (const file of files) {
-			const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-			const isExcel = [
-				"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-				"application/vnd.ms-excel",
-			].includes(file.type) ||
-				file.name.toLowerCase().endsWith(".xlsx") ||
-				file.name.toLowerCase().endsWith(".xls");
-
-			let parsed: Record<string, string | number | null> = {};
-			let rawText = "";
-			let tipo = "desconocido";
-			let error: string | null = null;
-			let errorStack: string | null = null;
-
-			try {
-				const buffer = Buffer.from(await file.arrayBuffer());
-				if (isPdf) {
-					// 1. Intentar extraer texto con pdf2json
-					const pdfParser = new PDFParser();
-					try {
-						rawText = await new Promise<string>((resolve, reject) => {
-							pdfParser.on("pdfParser_dataError", errData => {
-								const errorMsg = (errData && typeof errData === 'object' && 'parserError' in errData)
-									? (errData as any).parserError?.message || (errData as any).parserError || 'Error al parsear PDF'
-									: 'Error al parsear PDF';
-								console.error(`[PDF2JSON][${file.name}] Error:`, errorMsg, errData);
-								reject(errorMsg);
-							});
-							pdfParser.on("pdfParser_dataReady", pdfData => {
-								const text = pdfParser.getRawTextContent();
-								resolve(text);
-							});
-							pdfParser.parseBuffer(buffer);
-						});
-						parsed = parseInvoiceText(rawText);
-						if (!rawText.trim() || Object.values(parsed).filter(Boolean).length === 0) {
-							// 2. Si no se extrajo texto útil, aplicar OCR
-							console.log(`[OCR][${file.name}] Intentando extraer texto con OCR...`);
-							rawText = await extractTextWithOCR(buffer);
-							parsed = parseInvoiceText(rawText);
-						}
-					} catch (e: any) {
-						console.error(`[PDF2JSON][${file.name}] Falla, se intenta OCR.`, e);
-						// Si pdf2json falla, intentar OCR
-						try {
-							rawText = await extractTextWithOCR(buffer);
-							parsed = parseInvoiceText(rawText);
-						} catch (ocrErr: any) {
-							console.error(`[OCR][${file.name}] Error:`, ocrErr);
-							error = ocrErr?.message || "Error desconocido en OCR";
-							errorStack = ocrErr?.stack || JSON.stringify(ocrErr);
-						}
-					}
-					tipo = detectTipoDocumento(rawText);
-				} else if (isExcel) {
-					try {
-						parsed = parseExcelInvoice(buffer);
-						rawText = "[Archivo Excel procesado]";
-						tipo = "comprobante";
-					} catch (excelErr: any) {
-						console.error(`[EXCEL][${file.name}] Error:`, excelErr);
-						error = excelErr?.message || "Error procesando Excel";
-						errorStack = excelErr?.stack || JSON.stringify(excelErr);
-					}
-				} else if (file.name.toLowerCase().endsWith(".xml")) {
-					// TODO: parsear XML de e-check
-					tipo = "e-check";
-					parsed = { xml: "pendiente" };
-				} else {
-					error = "Tipo de archivo no soportado";
-				}
-			} catch (e: any) {
-				console.error(`[GENERAL][${file.name}] Error:`, e);
-				error = e?.message || "Error desconocido";
-				errorStack = e?.stack || JSON.stringify(e);
-			}
-
-			const result = {
-				fileName: file.name,
-				type: tipo,
-				parsed,
-				rawText: rawText.substring(0, 2000),
-				error,
-				errorStack
-			};
-			if (tipo === "comprobante") results.comprobantes.push(result);
-			else if (tipo === "e-check") results.echecks.push(result);
-			else if (tipo === "carta de porte") results.cartasDePorte.push(result);
-			else results.desconocidos.push(result);
+		if (!isPdf && !isExcel) {
+			return NextResponse.json(
+				{ error: "Solo se permiten archivos PDF o Excel (.xlsx/.xls)" },
+				{ status: 400 }
+			);
 		}
 
-		return NextResponse.json({ success: true, ...results });
+		if (file.size > 10 * 1024 * 1024) {
+			return NextResponse.json(
+				{ error: "El archivo no puede superar 10MB" },
+				{ status: 400 }
+			);
+		}
+
+		const buffer = Buffer.from(await file.arrayBuffer());
+		let parsed: Record<string, string | number | null>;
+		let rawText = "";
+
+		if (isPdf) {
+			rawText = await extractPdfTextFromBuffer(buffer);
+			parsed = parseInvoiceText(rawText);
+		} else {
+			parsed = parseExcelInvoice(buffer);
+			rawText = "[Archivo Excel procesado]";
+		}
+
+		return NextResponse.json({
+			success: true,
+			rawText: rawText.substring(0, 2000),
+			parsed,
+		});
 	} catch (error: unknown) {
 		const msg = error instanceof Error ? error.message : "Error desconocido";
-		console.error("[FATAL][parse-pdf] Error parsing files:", error);
+		console.error("Error parsing file:", msg);
 		return NextResponse.json(
-			{ error: `Error al procesar los archivos: ${msg}` },
+			{ error: `Error al procesar el archivo: ${msg}` },
 			{ status: 500 }
 		);
 	}
 }
-

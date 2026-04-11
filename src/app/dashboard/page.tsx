@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency, getMonthName } from "@/lib/utils";
+import { formatCurrency, formatDate, getMonthName } from "@/lib/utils";
 import {
 	FileText,
 	FileInput,
@@ -8,12 +8,16 @@ import {
 	TrendingUp,
 	TrendingDown,
 	DollarSign,
+	BellRing,
 } from "lucide-react";
 
 async function getDashboardData() {
 	const now = new Date();
-	const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-	const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+	const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+	const monthEndExclusive = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+	const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+	// Exclusivo: incluye hasta el final del día +10 (equivalente al rango inclusivo de 10 días).
+	const tenDaysExclusive = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 11);
 
 	const [
 		facturasEmitidas,
@@ -22,29 +26,30 @@ async function getDashboardData() {
 		liquidacionesRecibidas,
 		chequesPendientes,
 		chequesRecibidosPendientes,
+		chequesProximosACobrar,
 	] = await Promise.all([
 		prisma.facturaEmitida.aggregate({
-			where: { fecha: { gte: firstDay, lte: lastDay } },
+			where: { fecha: { gte: monthStart, lt: monthEndExclusive } },
 			_sum: { montoIva: true, total: true },
 			_count: true,
 		}),
 		prisma.facturaRecibida.aggregate({
-			where: { fecha: { gte: firstDay, lte: lastDay } },
+			where: { fecha: { gte: monthStart, lt: monthEndExclusive } },
 			_sum: { montoIva: true, total: true },
 			_count: true,
 		}),
 		prisma.liquidacionEmitida.aggregate({
-			where: { fecha: { gte: firstDay, lte: lastDay } },
+			where: { fecha: { gte: monthStart, lt: monthEndExclusive } },
 			_sum: { montoIva: true, total: true },
 			_count: true,
 		}),
 		prisma.liquidacionRecibida.aggregate({
-			where: { fecha: { gte: firstDay, lte: lastDay } },
+			where: { fecha: { gte: monthStart, lt: monthEndExclusive } },
 			_sum: { montoIva: true, total: true },
 			_count: true,
 		}),
 		prisma.chequeEmitido.aggregate({
-			where: { estado: "PENDIENTE", fechaCobro: { gte: firstDay, lte: lastDay } },
+			where: { estado: "PENDIENTE" },
 			_sum: { monto: true },
 			_count: true,
 		}),
@@ -52,6 +57,21 @@ async function getDashboardData() {
 			where: { estado: "PENDIENTE" },
 			_sum: { monto: true },
 			_count: true,
+		}),
+		prisma.chequeRecibido.findMany({
+			where: {
+				estado: "PENDIENTE",
+				fechaCobro: { gte: todayStart, lt: tenDaysExclusive },
+			},
+			select: {
+				id: true,
+				numeroCheque: true,
+				fechaCobro: true,
+				monto: true,
+				cliente: { select: { razonSocial: true } },
+			},
+			orderBy: { fechaCobro: "asc" },
+			take: 8,
 		}),
 	]);
 
@@ -84,6 +104,19 @@ async function getDashboardData() {
 			count: chequesRecibidosPendientes._count,
 			total: Number(chequesRecibidosPendientes._sum.monto || 0),
 		},
+		recordatoriosCheques: chequesProximosACobrar.map((c) => {
+			const cobro = new Date(c.fechaCobro);
+			const diffMs = cobro.getTime() - todayStart.getTime();
+			const diasRestantes = Math.round(diffMs / (1000 * 60 * 60 * 24));
+			return {
+				id: c.id,
+				numeroCheque: c.numeroCheque,
+				cliente: c.cliente.razonSocial,
+				monto: Number(c.monto),
+				fechaCobro: cobro,
+				diasRestantes,
+			};
+		}),
 	};
 }
 
@@ -191,6 +224,34 @@ export default async function DashboardPage() {
 								Tenés <strong>{data.chequesRecibidos.count}</strong> cheques recibidos pendientes por un total de{" "}
 								<strong className="text-green-700 dark:text-green-400">{formatCurrency(data.chequesRecibidos.total)}</strong>
 							</p>
+						</CardContent>
+					</Card>
+				)}
+
+				{data.recordatoriosCheques.length > 0 && (
+					<Card className="mt-6 border-amber-300 bg-amber-50/60 dark:bg-amber-950/20">
+						<CardHeader>
+							<CardTitle className="text-lg flex items-center gap-2">
+								<BellRing className="h-5 w-5 text-amber-700" />
+								Recordatorios de Cheques (Próximos 10 días)
+							</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<div className="space-y-2">
+								{data.recordatoriosCheques.map((c) => (
+									<div key={c.id} className="flex items-center justify-between rounded-md border border-amber-200 bg-white/70 p-3 dark:bg-slate-900/40">
+										<div>
+											<p className="font-medium text-gray-900 dark:text-gray-100">
+												{c.cliente} · Cheque {c.numeroCheque}
+											</p>
+											<p className="text-sm text-gray-600 dark:text-gray-300">
+												Cobro: {formatDate(c.fechaCobro.toISOString())} · {c.diasRestantes === 0 ? "Vence hoy" : `Faltan ${c.diasRestantes} días`}
+											</p>
+										</div>
+										<p className="font-semibold text-amber-700 dark:text-amber-300">{formatCurrency(c.monto)}</p>
+									</div>
+								))}
+							</div>
 						</CardContent>
 					</Card>
 				)}

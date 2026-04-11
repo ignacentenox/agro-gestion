@@ -1,18 +1,10 @@
 #!/bin/bash
-# Script para iniciar el servidor Next.js de Agro Gestión
-
-# Salir si ocurre un error
 set -e
 
-# Activar entorno si es necesario (descomentar si usas pyenv, nvm, etc)
-# source ~/.nvm/nvm.sh
-# nvm use 18
+# Alias de compatibilidad histórica.
+# Usar `start.sh` como script canónico (DB/Prisma + dev server).
 
-# Instalar dependencias si faltan
-if [ ! -d "node_modules" ]; then
-  echo "Instalando dependencias..."
-  npm install
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# Iniciar el servidor de desarrollo
-npm run dev
+exec ./start.sh

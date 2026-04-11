@@ -1,33 +1,27 @@
 "use client";
 
 import { useTheme } from "@/components/theme-provider";
-import { Sun, Moon, Monitor } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
-	const { theme, setTheme } = useTheme();
+	const { theme, resolvedTheme, setTheme } = useTheme();
 
 	const next = () => {
-		const order: Array<"light" | "dark" | "system"> = [
-			"light",
-			"dark",
-			"system",
-		];
-		const idx = order.indexOf(theme);
+		const order: Array<"light" | "dark"> = ["light", "dark"];
+		const current = theme === "system" ? resolvedTheme : theme;
+		const idx = order.indexOf(current);
 		setTheme(order[(idx + 1) % order.length]);
 	};
 
 	const icon =
-		theme === "dark" ? (
+		(theme === "system" ? resolvedTheme : theme) === "dark" ? (
 			<Moon className="h-4 w-4" />
-		) : theme === "light" ? (
-			<Sun className="h-4 w-4" />
 		) : (
-			<Monitor className="h-4 w-4" />
+			<Sun className="h-4 w-4" />
 		);
 
-	const label =
-		theme === "dark" ? "Oscuro" : theme === "light" ? "Claro" : "Sistema";
+	const label = (theme === "system" ? resolvedTheme : theme) === "dark" ? "Oscuro" : "Claro";
 
 	return (
 		<Button

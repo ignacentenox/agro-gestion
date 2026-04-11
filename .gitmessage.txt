@@ -1,0 +1,15 @@
+# tipo(scope): resumen en imperativo y en minusculas
+#
+# Cuerpo opcional (que y por que):
+# - Contexto breve
+# - Cambio principal
+# - Impacto tecnico o funcional
+#
+# Footer opcional:
+# - Refs: #123
+# - BREAKING CHANGE: descripcion
+#
+# Ejemplos:
+# feat(facturas): agregar importacion de comprobantes pdf
+# fix(login): corregir error de conexion con prisma adapter pg
+# chore(prisma): configurar seed en prisma config

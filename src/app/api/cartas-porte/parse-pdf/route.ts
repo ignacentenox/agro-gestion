@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractPdfTextFromBuffer } from "../../../../lib/pdf-text";
+import { extractPdfTextFromBuffer } from "@/lib/pdf-text";
 
 function parseNumber(value: string | null): number | null {
 	if (!value) return null;
@@ -21,35 +21,80 @@ function parseCartaPorteText(text: string) {
 	const singleLine = text.replace(/\s+/g, " ");
 
 	const numero =
-		singleLine.match(/carta\s+de\s+porte[^\d]{0,20}(\d{6,16})/i)?.[1] ||
-		singleLine.match(/n[°º]?\s*(?:de\s*)?carta[^\d]{0,20}(\d{6,16})/i)?.[1] ||
-		null;
+		singleLine.match(/n[°º]?\s*cpe\s*:\s*\d{1,5}-(\d{1,10})/i)?.[1]
+		|| singleLine.match(/\b\d{5}-(\d{8})\b/)?.[1]
+		|| singleLine.match(/carta\s+de\s+porte[^\d]{0,20}(\d{6,16})/i)?.[1]
+		|| singleLine.match(/n[°º]?\s*(?:de\s*)?carta[^\d]{0,20}(\d{6,16})/i)?.[1]
+		|| null;
 
 	const fecha = parseDateToISO(
-		singleLine.match(/fecha\s*(?:de\s*emisi[oó]n)?\s*:?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i)?.[1] || null,
+		singleLine.match(/(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})\s+\d{1,2}:\d{2}\s+fecha\s*:/i)?.[1]
+		|| singleLine.match(/fecha\s*:?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})(?:\s+\d{1,2}:\d{2})?/i)?.[1]
+		|| singleLine.match(/fecha\s*(?:de\s*emisi[oó]n)?\s*:?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})/i)?.[1]
+		|| null,
 	);
 
-	const destino = singleLine.match(/destino\s*:?\s*([^|\n\r]{3,80})/i)?.[1]?.trim() || "";
-	const localidadDestino = singleLine.match(/localidad\s+destino\s*:?\s*([^|\n\r]{3,80})/i)?.[1]?.trim() || "";
-	const localidadOrigen = singleLine.match(/localidad\s+origen\s*:?\s*([^|\n\r]{3,80})/i)?.[1]?.trim() || "";
+	const destino = (
+		singleLine.match(/d\s*-\s*destino\s+de\s+la\s+mercader[ií]a.+?direcci[oó]n\s*:\s*([a-z0-9áéíóúñ\s./-]+?)\s+[a-záéíóúñ\s]+\s+es\s+un\s+campo/i)?.[1]
+		|| singleLine.match(/d\s*-\s*destino\s+de\s+la\s+mercader[ií]a.+?localidad\s*:\s*([a-záéíóúñ\s]{3,80})\s+provincia/i)?.[1]
+		|| singleLine.match(/destino\s*:\s*(?:\d{11}\s*-\s*)?(.+?)(?=\s+empresa\s+transportista:|\s+[a-z]-\s+grano|\s+c\s*-\s+procedencia|$)/i)?.[1]
+		|| singleLine.match(/destino\s*:?\s*([^|\n\r]{3,120})/i)?.[1]
+		|| ""
+	).trim();
 
-	const productoRaw = singleLine.match(/producto\s*:?\s*([^|\n\r]{3,40})/i)?.[1]?.toUpperCase() || "";
+	const localidadDestino = (
+		singleLine.match(/d\s*-\s*destino\s+de\s+la\s+mercader[ií]a.+?localidad\s*:\s*([a-záéíóúñ\s]+?)\s+provincia\s*:?\s*([a-záéíóúñ\s]+)/i)?.[1]
+		|| singleLine.match(/localidad\s+destino\s*:?\s*([^|\n\r]{3,80})/i)?.[1]
+		|| ""
+	).trim().toUpperCase();
+
+	const localidadOrigen = (
+		singleLine.match(/c\s*-\s*procedencia.+?localidad\s*:\s*([a-záéíóúñ\s]+?)\s+provincia/i)?.[1]
+		|| singleLine.match(/localidad\s+origen\s*:?\s*([^|\n\r]{3,80})/i)?.[1]
+		|| ""
+	).trim().toUpperCase();
+
+	const productoRaw = (
+		singleLine.match(/peso\s+neto\s+([a-záéíóúñ]{3,20})\s+([a-záéíóúñ]{3,20})\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+/i)?.[1]
+		|| singleLine.match(/grano\s*\/\s*tipo\s*:\s*([a-záéíóúñ\s]{3,40})/i)?.[1]
+		|| singleLine.match(/producto\s*:?\s*([^|\n\r]{3,40})/i)?.[1]
+		|| ""
+	).toUpperCase();
+
+	const productoToken = productoRaw.split(" ").filter(Boolean);
+	const productoNormalized = productoToken.length >= 2 && productoToken[0] === productoToken[1]
+		? productoToken[0]
+		: productoRaw;
+
 	let producto = "SOJA";
-	if (productoRaw.includes("MAI")) producto = "MAIZ";
-	else if (productoRaw.includes("TRIGO")) producto = "TRIGO";
-	else if (productoRaw.includes("SORGO")) producto = "SORGO";
-	else if (productoRaw.includes("GIRASOL")) producto = "GIRASOL";
-	else if (productoRaw.includes("CEBADA")) producto = "CEBADA";
-	else if (productoRaw.includes("SOJA")) producto = "SOJA";
-	else if (productoRaw) producto = "OTRO";
+	if (productoNormalized.includes("MAI")) producto = "MAIZ";
+	else if (productoNormalized.includes("TRIGO")) producto = "TRIGO";
+	else if (productoNormalized.includes("SORGO")) producto = "SORGO";
+	else if (productoNormalized.includes("GIRASOL")) producto = "GIRASOL";
+	else if (productoNormalized.includes("CEBADA")) producto = "CEBADA";
+	else if (productoNormalized.includes("SOJA")) producto = "SOJA";
+	else if (productoNormalized) producto = "OTRO";
 
-	const pesoBrutoKg = parseNumber(singleLine.match(/peso\s+bruto\s*(?:kg)?\s*:?\s*([\d.,]+)/i)?.[1] || null);
-	const pesoTaraKg = parseNumber(singleLine.match(/peso\s+tara\s*(?:kg)?\s*:?\s*([\d.,]+)/i)?.[1] || null);
+	const pesosCpe = singleLine.match(/peso\s+bruto\s+peso\s+tara\s+peso\s+neto\s+[a-záéíóúñ\s]+\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)/i);
+	const pesoBrutoKg = parseNumber(pesosCpe?.[1] || singleLine.match(/peso\s+bruto\s*(?:kg)?\s*:?\s*([\d.,]+)/i)?.[1] || null);
+	const pesoTaraKg = parseNumber(pesosCpe?.[2] || singleLine.match(/peso\s+tara\s*(?:kg)?\s*:?\s*([\d.,]+)/i)?.[1] || null);
 
-	const transportista = singleLine.match(/transportista\s*:?\s*([^|\n\r]{3,80})/i)?.[1]?.trim() || "";
-	const chofer = singleLine.match(/chofer\s*:?\s*([^|\n\r]{3,80})/i)?.[1]?.trim() || "";
-	const patenteCamion = singleLine.match(/patente\s+cam[ií]on\s*:?\s*([A-Z0-9]{6,10})/i)?.[1]?.toUpperCase() || "";
-	const patenteAcoplado = singleLine.match(/patente\s+acoplado\s*:?\s*([A-Z0-9]{6,10})/i)?.[1]?.toUpperCase() || "";
+	const transportista = (
+		singleLine.match(/empresa\s+transportista\s*:\s*(?:\d{11}\s*-\s*)?(.+?)(?=\s+\d{11}\s*-\s*|\s+[a-z]-\s+grano|\s+b\s*-\s+grano|$)/i)?.[1]
+		|| singleLine.match(/transportista\s*:?\s*([^|\n\r]{3,120})/i)?.[1]
+		|| ""
+	).trim();
+
+	const chofer = (
+		singleLine.match(/chofer\s*:\s*(?:\d{11}\s*-\s*)?(.+?)(?=\s+representante\s+recibidor|\s+intermediario\s+de\s+flete|\s+[a-z]-\s+grano|$)/i)?.[1]
+		|| singleLine.match(/chofer\s*:?\s*([^|\n\r]{3,80})/i)?.[1]
+		|| ""
+	).trim();
+
+	const dominioCpe = singleLine.match(/dominios\s*:\s*(?:kms\.?\s*a\s*recorrer\s*:?\s*partida\s*:)?\s*([a-z0-9]{6,8})\s*-\s*([a-z0-9]{6,8})/i)
+		|| singleLine.match(/dominios\s*:\s*.*?([a-z0-9]{6,8})\s*-\s*([a-z0-9]{6,8})/i);
+	const patenteCamion = (dominioCpe?.[1] || singleLine.match(/patente\s+cam[ií]on\s*:?\s*([A-Z0-9]{6,10})/i)?.[1] || "").toUpperCase();
+	const patenteAcoplado = (dominioCpe?.[2] || singleLine.match(/patente\s+acoplado\s*:?\s*([A-Z0-9]{6,10})/i)?.[1] || "").toUpperCase();
 	const ctg = singleLine.match(/\bCTG\b\s*:?\s*(\d{6,20})/i)?.[1] || "";
 
 	return {

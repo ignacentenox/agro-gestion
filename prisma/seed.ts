@@ -1,7 +1,16 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+	throw new Error("DATABASE_URL no esta definido");
+}
+
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
 	console.log("🌱 Iniciando seed de la base de datos...");
@@ -22,6 +31,20 @@ async function main() {
 		},
 	});
 	console.log(`✅ Usuario admin creado: ${admin.email}`);
+
+	// Usuario admin adicional solicitado
+	const hashedPassword2 = await bcrypt.hash("4455", 12);
+	const admin2 = await prisma.user.upsert({
+		where: { email: "igna@agrogestion.com" },
+		update: {},
+		create: {
+			email: "igna@agrogestion.com",
+			name: "Ignacio Admin",
+			password: hashedPassword2,
+			role: "ADMIN",
+		},
+	});
+	console.log(`✅ Usuario admin creado: ${admin2.email}`);
 
 	// ==========================================
 	// Bancos de ejemplo
@@ -126,4 +149,5 @@ main()
 	})
 	.finally(async () => {
 		await prisma.$disconnect();
+		await pool.end();
 	});

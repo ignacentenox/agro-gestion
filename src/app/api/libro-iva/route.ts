@@ -3,40 +3,45 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(request: Request) {
 	const { searchParams } = new URL(request.url);
-	const mes = Number(searchParams.get("mes") || new Date().getMonth() + 1);
-	const anio = Number(searchParams.get("anio") || new Date().getFullYear());
+	const mesParam = searchParams.get("mes");
+	const anioParam = searchParams.get("anio");
 
-	const firstDay = new Date(anio, mes - 1, 1);
-	const lastDay = new Date(anio, mes, 0);
+	const mes = Number(mesParam || new Date().getMonth() + 1);
+	const anio = Number(anioParam || new Date().getFullYear());
 
-	const dateFilter = { fecha: { gte: firstDay, lte: lastDay } };
+	const where: Record<string, unknown> = {};
+	if (mesParam && anioParam) {
+		const firstDay = new Date(Number(anioParam), Number(mesParam) - 1, 1);
+		const lastDay = new Date(Number(anioParam), Number(mesParam), 0);
+		where.fecha = { gte: firstDay, lte: lastDay };
+	}
 
 	const [facturasEmitidas, facturasRecibidas, liquidacionesEmitidas, liquidacionesRecibidas] =
 		await Promise.all([
 			prisma.facturaEmitida.findMany({
-				where: dateFilter,
+				where,
 				include: { cliente: { select: { razonSocial: true, cuit: true } } },
 				orderBy: { fecha: "asc" },
 			}),
 			prisma.facturaRecibida.findMany({
-				where: dateFilter,
+				where,
 				include: { proveedor: { select: { razonSocial: true, cuit: true } } },
 				orderBy: { fecha: "asc" },
 			}),
 			prisma.liquidacionEmitida.findMany({
-				where: dateFilter,
+				where,
 				include: { cliente: { select: { razonSocial: true, cuit: true } } },
 				orderBy: { fecha: "asc" },
 			}),
 			prisma.liquidacionRecibida.findMany({
-				where: dateFilter,
+				where,
 				include: { proveedor: { select: { razonSocial: true, cuit: true } } },
 				orderBy: { fecha: "asc" },
 			}),
 		]);
 
 	// IVA Ventas (Débito Fiscal)
-	const ventasFacturas = facturasEmitidas.map((f) => ({
+	const ventasFacturas = facturasEmitidas.map((f: any) => ({
 		id: f.id,
 		tipo: "Factura" as const,
 		tipoComprobante: f.tipoComprobante,
@@ -53,7 +58,7 @@ export async function GET(request: Request) {
 		total: Number(f.total),
 	}));
 
-	const ventasLiquidaciones = liquidacionesEmitidas.map((l) => ({
+	const ventasLiquidaciones = liquidacionesEmitidas.map((l: any) => ({
 		id: l.id,
 		tipo: "Liquidación" as const,
 		tipoComprobante: null,
@@ -71,7 +76,7 @@ export async function GET(request: Request) {
 	}));
 
 	// IVA Compras (Crédito Fiscal)
-	const comprasFacturas = facturasRecibidas.map((f) => ({
+	const comprasFacturas = facturasRecibidas.map((f: any) => ({
 		id: f.id,
 		tipo: "Factura" as const,
 		tipoComprobante: f.tipoComprobante,
@@ -88,7 +93,7 @@ export async function GET(request: Request) {
 		total: Number(f.total),
 	}));
 
-	const comprasLiquidaciones = liquidacionesRecibidas.map((l) => ({
+	const comprasLiquidaciones = liquidacionesRecibidas.map((l: any) => ({
 		id: l.id,
 		tipo: "Liquidación" as const,
 		tipoComprobante: null,

@@ -21,7 +21,12 @@ export async function GET(request: Request) {
 
 		const cheques = await prisma.chequeRecibido.findMany({
 			where,
-			include: { cliente: { select: { razonSocial: true } }, bancoOrigen: { select: { nombre: true } } },
+			include: {
+				cliente: { select: { razonSocial: true } },
+				bancoOrigen: { select: { nombre: true } },
+				bancoDestino: { select: { nombre: true } },
+				proveedorDestino: { select: { razonSocial: true } },
+			},
 			orderBy: { fechaCobro: "asc" },
 		});
 		return NextResponse.json(cheques);
@@ -57,20 +62,37 @@ export async function POST(request: Request) {
 			if (!data.numeroCheque || !data.bancoEmisor || !data.fecha || !data.fechaCobro || !data.clienteId || !data.monto) {
 				return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 });
 			}
+
+			if ((data.destinoTipo === "DEPOSITO" || data.destinoTipo === "VENTA") && !data.bancoDestinoId) {
+				return NextResponse.json({ error: "Debe seleccionar banco destino" }, { status: 400 });
+			}
+
+			if (data.destinoTipo === "PROVEEDOR" && !data.proveedorDestinoId) {
+				return NextResponse.json({ error: "Debe seleccionar proveedor destino" }, { status: 400 });
+			}
+
 			const cheque = await prisma.chequeRecibido.create({
 				data: {
 					bancoOrigenId: data.bancoOrigenId || null,
 					numeroCheque: data.numeroCheque,
+					formato: data.formato || "FISICO",
 					bancoEmisor: data.bancoEmisor,
 					fecha: new Date(data.fecha),
 					fechaCobro: new Date(data.fechaCobro),
 					clienteId: data.clienteId,
 					concepto: data.concepto,
 					monto: Number(data.monto),
-					destino: data.destino,
+					destinoTipo: data.destinoTipo || null,
+					bancoDestinoId: data.bancoDestinoId || null,
+					proveedorDestinoId: data.proveedorDestinoId || null,
+					destinoDetalle: data.destinoDetalle || null,
 					observaciones: data.observaciones,
 				},
-				include: { cliente: { select: { razonSocial: true } } },
+				include: {
+					cliente: { select: { razonSocial: true } },
+					bancoDestino: { select: { nombre: true } },
+					proveedorDestino: { select: { razonSocial: true } },
+				},
 			});
 			return NextResponse.json(cheque, { status: 201 });
 		}
@@ -83,6 +105,7 @@ export async function POST(request: Request) {
 			data: {
 				bancoId: data.bancoId,
 				numeroCheque: data.numeroCheque,
+				formato: data.formato || "FISICO",
 				fecha: new Date(data.fecha),
 				fechaCobro: new Date(data.fechaCobro),
 				proveedorId: data.proveedorId,

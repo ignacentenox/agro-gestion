@@ -15,7 +15,6 @@ import {
 	LogOut,
 	ChevronLeft,
 	Menu,
-	Truck,
 	MapPin,
 	Wheat,
 	ShieldCheck,
@@ -34,12 +33,23 @@ const navigationBase = [
 	{ name: "Bancos", href: "/dashboard/bancos", icon: Landmark },
 	{ name: "Cheques", href: "/dashboard/cheques", icon: CreditCard },
 	{ name: "Cuentas Corrientes", href: "/dashboard/cuentas-corrientes", icon: Users },
-	{ name: "Proveedores", href: "/dashboard/proveedores", icon: Truck },
+	{ name: "Proveedores", href: "/dashboard/proveedores", icon: Users },
 	{ name: "Clientes", href: "/dashboard/clientes", icon: Users },
 	{ name: "Campos", href: "/dashboard/campos", icon: MapPin },
 	{ name: "Cartas de Porte", href: "/dashboard/cartas-porte", icon: Wheat },
 	{ name: "Usuarios", href: "/dashboard/usuarios", icon: ShieldCheck, adminOnly: true },
 ];
+
+function isItemActive(pathname: string | null, href: string): boolean {
+	if (!pathname) return false;
+
+	// Dashboard se marca solo en la ruta exacta para evitar doble resaltado.
+	if (href === "/dashboard") {
+		return pathname === "/dashboard";
+	}
+
+	return pathname.startsWith(href);
+}
 
 function SidebarComponent({ userName, userRole }: { userName: string; userRole: string }) {
 	const pathname = usePathname();
@@ -71,14 +81,20 @@ function SidebarComponent({ userName, userRole }: { userName: string; userRole: 
 	return (
 		<aside
 			className={cn(
-				"flex h-screen flex-col border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 transition-all duration-300",
+				"flex h-screen flex-col overflow-hidden border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 transition-all duration-300",
 				mounted && collapsed ? "w-16" : "w-64"
 			)}
 			role="navigation"
 			aria-label="Menú principal"
 		>
 			{/* Header con Logo */}
-			<div className="flex h-16 items-center justify-between border-b border-gray-200 dark:border-gray-700 px-3" role="banner">
+			<div
+				className={cn(
+					"flex h-16 items-center border-b border-gray-200 dark:border-gray-700",
+					mounted && collapsed ? "justify-center px-1" : "justify-between px-3"
+				)}
+				role="banner"
+			>
 				{/* Para evitar hydration mismatch, renderizar ambos logos solo tras mounted. SSR muestra un placeholder invisible del mismo tamaño. */}
 				{!mounted ? (
 					<div style={{ width: 36, height: 36 }} />
@@ -108,7 +124,10 @@ function SidebarComponent({ userName, userRole }: { userName: string; userRole: 
 					variant="ghost"
 					size="icon"
 					onClick={() => setCollapsed(!collapsed)}
-					className="h-8 w-8 flex-shrink-0 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+					className={cn(
+						"h-8 w-8 flex-shrink-0 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700",
+						mounted && collapsed && "absolute right-1"
+					)}
 				>
 					{mounted && collapsed ? (
 						<Menu className="h-4 w-4" />
@@ -122,7 +141,7 @@ function SidebarComponent({ userName, userRole }: { userName: string; userRole: 
 			<nav className="flex-1 overflow-y-auto p-2" aria-label="Navegación lateral">
 				<ul className="space-y-1">
 					{navigation.map((item) => {
-						const isActive = pathname?.startsWith(item.href);
+						const isActive = isItemActive(pathname, item.href);
 						return (
 							<li key={item.name}>
 								<Link
@@ -168,12 +187,12 @@ function SidebarComponent({ userName, userRole }: { userName: string; userRole: 
 					<Button
 						onClick={handleLogout}
 						variant="destructive"
-						className="w-full flex items-center gap-3 px-3 py-2 font-semibold text-red-700 dark:text-white"
+						className="w-full flex items-center gap-3 px-3 py-2 font-semibold text-white hover:text-white"
 						title="Cerrar sesión"
 						aria-label="Cerrar sesión"
 					>
-						<LogOut className="h-5 w-5 flex-shrink-0 text-red-700 dark:text-white" aria-hidden="true" />
-						{!collapsed && <span className="text-red-700 dark:text-white">Cerrar sesión</span>}
+						<LogOut className="h-5 w-5 flex-shrink-0 text-white" aria-hidden="true" />
+						{!collapsed && <span className="text-white">Cerrar sesión</span>}
 					</Button>
 				)}
 			</div>
