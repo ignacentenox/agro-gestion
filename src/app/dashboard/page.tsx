@@ -13,10 +13,11 @@ import {
 
 async function getDashboardData() {
 	const now = new Date();
-	const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-	const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-	const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-	const tenDaysAhead = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 10);
+	const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+	const monthEndExclusive = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+	const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+	// Exclusivo: incluye hasta el final del día +10 (equivalente al rango inclusivo de 10 días).
+	const tenDaysExclusive = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 11);
 
 	const [
 		facturasEmitidas,
@@ -28,27 +29,27 @@ async function getDashboardData() {
 		chequesProximosACobrar,
 	] = await Promise.all([
 		prisma.facturaEmitida.aggregate({
-			where: { fecha: { gte: firstDay, lte: lastDay } },
+			where: { fecha: { gte: monthStart, lt: monthEndExclusive } },
 			_sum: { montoIva: true, total: true },
 			_count: true,
 		}),
 		prisma.facturaRecibida.aggregate({
-			where: { fecha: { gte: firstDay, lte: lastDay } },
+			where: { fecha: { gte: monthStart, lt: monthEndExclusive } },
 			_sum: { montoIva: true, total: true },
 			_count: true,
 		}),
 		prisma.liquidacionEmitida.aggregate({
-			where: { fecha: { gte: firstDay, lte: lastDay } },
+			where: { fecha: { gte: monthStart, lt: monthEndExclusive } },
 			_sum: { montoIva: true, total: true },
 			_count: true,
 		}),
 		prisma.liquidacionRecibida.aggregate({
-			where: { fecha: { gte: firstDay, lte: lastDay } },
+			where: { fecha: { gte: monthStart, lt: monthEndExclusive } },
 			_sum: { montoIva: true, total: true },
 			_count: true,
 		}),
 		prisma.chequeEmitido.aggregate({
-			where: { estado: "PENDIENTE", fechaCobro: { gte: firstDay, lte: lastDay } },
+			where: { estado: "PENDIENTE" },
 			_sum: { monto: true },
 			_count: true,
 		}),
@@ -60,7 +61,7 @@ async function getDashboardData() {
 		prisma.chequeRecibido.findMany({
 			where: {
 				estado: "PENDIENTE",
-				fechaCobro: { gte: today, lte: tenDaysAhead },
+				fechaCobro: { gte: todayStart, lt: tenDaysExclusive },
 			},
 			select: {
 				id: true,
@@ -105,7 +106,7 @@ async function getDashboardData() {
 		},
 		recordatoriosCheques: chequesProximosACobrar.map((c) => {
 			const cobro = new Date(c.fechaCobro);
-			const diffMs = cobro.getTime() - today.getTime();
+			const diffMs = cobro.getTime() - todayStart.getTime();
 			const diasRestantes = Math.round(diffMs / (1000 * 60 * 60 * 24));
 			return {
 				id: c.id,
