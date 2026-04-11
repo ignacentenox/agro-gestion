@@ -62,6 +62,18 @@ Acceder a `http://localhost:3000`
 
 **Login inicial:** `admin@agrogestion.com` / `admin123`
 
+## Uso rápido (funcionamiento)
+
+1. Ingresar en `/login` con un usuario activo.
+2. Al iniciar sesión, se crea una cookie segura `agro-session` (HttpOnly) y se habilita el acceso al Dashboard.
+3. Desde el Dashboard se accede a los módulos (Facturas, Liquidaciones, Cheques, Bancos, Cuentas Corrientes, Proveedores, Clientes, Cartas de Porte, Libro IVA).
+4. Cada módulo permite altas/bajas/modificaciones (según corresponda) y utiliza la API interna bajo `/api/*`.
+
+Notas:
+
+- Si el sistema muestra “Error interno del servidor” al loguear, normalmente es un problema de conexión a la base de datos (`DATABASE_URL` / PostgreSQL apagado).
+- En desarrollo podés usar `./start.sh` para preparar base (migraciones + seed) y levantar el servidor.
+
 ## Deploy Automático (GitHub + Vercel)
 
 El repositorio ya incluye automatización en:

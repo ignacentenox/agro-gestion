@@ -2,6 +2,45 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword, createSession } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
+
+function toPublicError(err: unknown): { status: number; message: string } {
+	const isProd = process.env.NODE_ENV === "production";
+
+	// Problemas de conexión/arranque del cliente Prisma (DB caída, URL inválida, etc.)
+	if (err instanceof Prisma.PrismaClientInitializationError) {
+		// En dev damos un hint; en prod no filtramos detalles.
+		const code = (err as unknown as { errorCode?: string }).errorCode;
+		return {
+			status: 503,
+			message: isProd
+				? "Servicio no disponible"
+				: `Base de datos no disponible${code ? ` (${code})` : ""}. Verificá que PostgreSQL esté iniciado y que DATABASE_URL sea correcta.`,
+		};
+	}
+
+	// Errores de request conocidos (ej: tabla inexistente) - 500 pero con pista en dev.
+	if (err instanceof Prisma.PrismaClientKnownRequestError) {
+		const connectionLikeCodes = new Set(["P1000", "P1001", "P1002", "ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND"]);
+		if (connectionLikeCodes.has(err.code)) {
+			return {
+				status: 503,
+				message: isProd
+					? "Servicio no disponible"
+					: `Base de datos no disponible (${err.code}). Verificá que PostgreSQL esté iniciado y que DATABASE_URL sea correcta.`,
+			};
+		}
+
+		return {
+			status: 500,
+			message: isProd
+				? "Error interno del servidor"
+				: `Error de base de datos (${err.code}). Revisá migraciones/seed y la conexión.`,
+		};
+	}
+
+	return { status: 500, message: isProd ? "Error interno del servidor" : "Error interno del servidor" };
+}
 
 export async function POST(request: Request) {
 	try {
@@ -54,10 +93,8 @@ export async function POST(request: Request) {
 			user: { id: user.id, email: user.email, name: user.name, role: user.role },
 		});
 	} catch (err) {
-		console.log("[LOGIN] Error interno:", err);
-		return NextResponse.json(
-			{ error: "Error interno del servidor" },
-			{ status: 500 }
-		);
+		console.error("[LOGIN] Error:", err);
+		const { status, message } = toPublicError(err);
+		return NextResponse.json({ error: message }, { status });
 	}
 }
