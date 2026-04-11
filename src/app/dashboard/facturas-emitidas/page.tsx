@@ -20,6 +20,12 @@ import { formatCurrency, formatDate, formatCuit } from "@/lib/utils";
 import { Plus, FileText, Printer } from "lucide-react";
 import { PdfUpload } from "@/components/pdf-upload";
 
+declare global {
+	interface Window {
+		handlePdfParsedTest?: () => void;
+	}
+}
+
 const TIPOS_COMPROBANTE = [
 	{ value: "FACTURA_A", label: "Factura A" },
 	{ value: "FACTURA_B", label: "Factura B" },
